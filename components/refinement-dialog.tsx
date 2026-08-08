@@ -6,16 +6,18 @@ import type { ColumnAgent } from "@/lib/agent-types";
 import type { RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 import type { GitHubRepository, Ticket } from "@/lib/types";
 
-export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmit }: {
+export function RefinementDialog({ ticket, agent, repositories, masterInstructions, onClose, onSubmit }: {
   ticket: Ticket;
   agent: ColumnAgent;
   repositories: GitHubRepository[];
+  masterInstructions: string;
   onClose: () => void;
   onSubmit: (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[]) => Promise<void>;
 }) {
   const [proposal, setProposal] = useState<RefinementProposal>();
   const [repositoryId, setRepositoryId] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [questionIndex, setQuestionIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -24,7 +26,7 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
     const controller = new AbortController();
     fetch("/api/refinement", {
       method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticket, repositories, instructions: agent.instructions, modelName: agent.modelName }),
+      body: JSON.stringify({ ticket, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName }),
     }).then(async (response) => {
       const data = await response.json() as RefinementProposal & { error?: string };
       if (!response.ok) throw new Error(data.error || "Could not start the refinement agent.");
@@ -33,9 +35,14 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Could not start the refinement agent.");
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [ticket, agent, repositories]);
+  }, [ticket, agent, repositories, masterInstructions]);
 
   const complete = proposal?.questions.every((question) => answers[question.id]?.trim());
+  const currentQuestion = proposal?.questions[questionIndex];
+  const answerSuggestion = (questionId: string, answer: string) => {
+    setAnswers((current) => ({ ...current, [questionId]: answer }));
+    if (proposal && questionIndex < proposal.questions.length - 1) setQuestionIndex(questionIndex + 1);
+  };
   const submit = async () => {
     if (!proposal || !complete) return;
     setSubmitting(true); setError("");
@@ -52,9 +59,9 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
       {error && <div className="error-banner refinement-error">{error}</div>}
       {proposal && <div className="refinement-body">
         <section className="repository-classification"><div><p className="eyebrow">Repository classification</p><strong>{proposal.repositoryReason}</strong></div><label>Repository<select value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)}><option value="">No matching repository</option>{repositories.map((repository) => <option key={repository.id} value={repository.id}>{repository.owner}/{repository.name}</option>)}</select></label></section>
-        <div className="refinement-questions">{proposal.questions.map((question, index) => <fieldset key={question.id}><legend><span>{index + 1}</span>{question.question}</legend><div className="suggestion-grid">{question.suggestions.map((suggestion) => <button type="button" key={suggestion} className={answers[question.id] === suggestion ? "selected" : ""} onClick={() => setAnswers((current) => ({ ...current, [question.id]: suggestion }))}>{suggestion}</button>)}</div><label className="custom-answer">Or write your own answer<input value={question.suggestions.includes(answers[question.id] as never) ? "" : answers[question.id] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [question.id]: event.target.value }))} placeholder="Custom answer…"/></label></fieldset>)}</div>
+        {currentQuestion && <div className="refinement-question-page"><p className="question-count">Question {questionIndex + 1} of {proposal.questions.length}</p><fieldset><legend>{currentQuestion.question}</legend><div className="suggestion-grid">{currentQuestion.suggestions.map((suggestion) => <button type="button" key={suggestion} className={answers[currentQuestion.id] === suggestion ? "selected" : ""} onClick={() => answerSuggestion(currentQuestion.id, suggestion)}>{suggestion}</button>)}</div><label className="custom-answer">Or write your own answer<textarea rows={3} value={currentQuestion.suggestions.includes(answers[currentQuestion.id] as never) ? "" : answers[currentQuestion.id] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [currentQuestion.id]: event.target.value }))} placeholder="Custom answer…"/></label></fieldset></div>}
       </div>}
-      <footer className="refinement-actions"><button className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={!complete || submitting} onClick={() => void submit()}>{submitting ? "Starting…" : "Submit & run agent"}</button></footer>
+      <footer className="refinement-actions"><div className="question-progress" aria-label={`${Object.values(answers).filter((answer) => answer.trim()).length} of ${proposal?.questions.length ?? 0} questions completed`}>{proposal?.questions.map((question, index) => <button type="button" key={question.id} className={`${answers[question.id]?.trim() ? "answered" : ""} ${index === questionIndex ? "active" : ""}`} onClick={() => setQuestionIndex(index)} aria-label={`Go to question ${index + 1}`}/>)}</div><div className="question-navigation"><button className="button secondary" onClick={questionIndex === 0 ? onClose : () => setQuestionIndex(questionIndex - 1)}>{questionIndex === 0 ? "Cancel" : "Back"}</button>{proposal && questionIndex < proposal.questions.length - 1 ? <button className="button primary" disabled={!currentQuestion || !answers[currentQuestion.id]?.trim()} onClick={() => setQuestionIndex(questionIndex + 1)}>Next question</button> : <button className="button primary" disabled={!complete || submitting} onClick={() => void submit()}>{submitting ? "Starting…" : "Submit & run agent"}</button>}</div></footer>
     </section>
   </div>;
 }
