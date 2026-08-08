@@ -6,11 +6,21 @@ Distinguish confirmed facts from assumptions and unresolved questions.
 Prefer small, reviewable changes and measurable acceptance criteria.
 Do not invent requirements when behavior is ambiguous.`;
 
+function isMissingWorkspaceSettings(error: { code?: string; message?: string }) {
+  return error.code === "42P01" || error.code === "PGRST205" ||
+    Boolean(error.message?.includes("workspace_settings") && error.message.includes("schema cache"));
+}
+
 export async function loadMasterInstructions(): Promise<string> {
   if (!supabase) return DEFAULT_MASTER_INSTRUCTIONS;
   await ensureSupabaseSession();
   const { data, error } = await supabase.from("workspace_settings").select("master_instructions").maybeSingle();
-  if (error) throw error;
+  if (error) {
+    // Master instructions were added after the core board schema. Keep the board
+    // usable for existing installations until migration 005 is applied.
+    if (isMissingWorkspaceSettings(error)) return DEFAULT_MASTER_INSTRUCTIONS;
+    throw error;
+  }
   return data?.master_instructions || DEFAULT_MASTER_INSTRUCTIONS;
 }
 
