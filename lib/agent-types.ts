@@ -1,0 +1,29 @@
+import type { ColumnId } from "./types";
+
+export type StartMode = "manual" | "automatic";
+
+export interface ColumnAgent {
+  id?: string;
+  column: ColumnId;
+  name: string;
+  instructions: string;
+  startMode: StartMode;
+  enabled: boolean;
+  githubOwner: string;
+  githubRepo: string;
+  baseBranch: string;
+}
+
+export const DEFAULT_AGENT_INSTRUCTIONS: Record<ColumnId, string> = {
+  "New": "Review the request, identify its intent, and flag missing information.",
+  "In Refinement": "Research the request and improve the description and acceptance criteria.",
+  "Ready": "Confirm the work is actionable and produce a concise implementation plan.",
+  "In Work": "Implement the approved change in the configured GitHub repository on a new branch.",
+  "Work Completed": "Review the implementation for completeness and prepare a pull request summary.",
+  "In Review": "Review the proposed code changes and report concrete findings.",
+  "Review Completed": "Apply or verify approved review changes and summarize the result.",
+  "In Testing": "Design and run appropriate tests for the change.",
+  "Testing Completed": "Summarize test evidence and identify any remaining release risks.",
+  "Ready for Live": "Prepare release notes and verify the change is ready to merge or deploy.",
+  "Live": "Confirm the release outcome and create a concise completion summary.",
+};
