@@ -14,6 +14,22 @@ export interface ColumnAgent {
   allowedRepositoryIds: string[];
 }
 
+export type AgentRunStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
+
+export interface AgentRun {
+  id: string;
+  ticketId: string;
+  column: ColumnId;
+  agentName: string;
+  modelName: string;
+  trigger: StartMode;
+  status: AgentRunStatus;
+  output?: Record<string, unknown>;
+  error: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const DEFAULT_AGENT_INSTRUCTIONS: Record<ColumnId, string> = {
   "New": "Review the request, identify its intent, and flag missing information.",
   "In Refinement": "Classify the best repository from the ticket content and ask focused questions that resolve missing requirements before implementation.",

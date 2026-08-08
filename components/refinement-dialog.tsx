@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bot, Sparkles, X } from "lucide-react";
 import type { ColumnAgent } from "@/lib/agent-types";
-import type { RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
+import type { RefinedTicketContent, RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 import type { GitHubRepository, Ticket } from "@/lib/types";
 
 export function RefinementDialog({ ticket, agent, repositories, masterInstructions, onClose, onSubmit }: {
@@ -12,7 +12,7 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
   repositories: GitHubRepository[];
   masterInstructions: string;
   onClose: () => void;
-  onSubmit: (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[]) => Promise<void>;
+  onSubmit: (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[], rewrite: RefinedTicketContent) => Promise<void>;
 }) {
   const [proposal, setProposal] = useState<RefinementProposal>();
   const [repositoryId, setRepositoryId] = useState("");
@@ -47,7 +47,11 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
     if (!proposal || !complete) return;
     setSubmitting(true); setError("");
     try {
-      await onSubmit(repositoryId, proposal, proposal.questions.map((question) => ({ questionId: question.id, question: question.question, answer: answers[question.id].trim() })));
+      const completedAnswers = proposal.questions.map((question) => ({ questionId: question.id, question: question.question, answer: answers[question.id].trim() }));
+      const response = await fetch("/api/refinement", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rewrite", ticket, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName, answers: completedAnswers }) });
+      const rewrite = await response.json() as RefinedTicketContent & { error?: string };
+      if (!response.ok) throw new Error(rewrite.error || "The refinement agent could not rewrite the ticket.");
+      await onSubmit(repositoryId, proposal, completedAnswers, rewrite);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The refinement could not be submitted."); }
     finally { setSubmitting(false); }
   };
@@ -61,7 +65,7 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
         <section className="repository-classification"><div><p className="eyebrow">Repository classification</p><strong>{proposal.repositoryReason}</strong></div><label>Repository<select value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)}><option value="">No matching repository</option>{repositories.map((repository) => <option key={repository.id} value={repository.id}>{repository.owner}/{repository.name}</option>)}</select></label></section>
         {currentQuestion && <div className="refinement-question-page"><p className="question-count">Question {questionIndex + 1} of {proposal.questions.length}</p><fieldset><legend>{currentQuestion.question}</legend><div className="suggestion-grid">{currentQuestion.suggestions.map((suggestion) => <button type="button" key={suggestion} className={answers[currentQuestion.id] === suggestion ? "selected" : ""} onClick={() => answerSuggestion(currentQuestion.id, suggestion)}>{suggestion}</button>)}</div><label className="custom-answer">Or write your own answer<textarea rows={3} value={currentQuestion.suggestions.includes(answers[currentQuestion.id] as never) ? "" : answers[currentQuestion.id] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [currentQuestion.id]: event.target.value }))} placeholder="Custom answer…"/></label></fieldset></div>}
       </div>}
-      <footer className="refinement-actions"><div className="question-progress" aria-label={`${Object.values(answers).filter((answer) => answer.trim()).length} of ${proposal?.questions.length ?? 0} questions completed`}>{proposal?.questions.map((question, index) => <button type="button" key={question.id} className={`${answers[question.id]?.trim() ? "answered" : ""} ${index === questionIndex ? "active" : ""}`} onClick={() => setQuestionIndex(index)} aria-label={`Go to question ${index + 1}`}/>)}</div><div className="question-navigation"><button className="button secondary" onClick={questionIndex === 0 ? onClose : () => setQuestionIndex(questionIndex - 1)}>{questionIndex === 0 ? "Cancel" : "Back"}</button>{proposal && questionIndex < proposal.questions.length - 1 ? <button className="button primary" disabled={!currentQuestion || !answers[currentQuestion.id]?.trim()} onClick={() => setQuestionIndex(questionIndex + 1)}>Next question</button> : <button className="button primary" disabled={!complete || submitting} onClick={() => void submit()}>{submitting ? "Starting…" : "Submit & run agent"}</button>}</div></footer>
+      <footer className="refinement-actions"><div className="question-progress" aria-label={`${Object.values(answers).filter((answer) => answer.trim()).length} of ${proposal?.questions.length ?? 0} questions completed`}>{proposal?.questions.map((question, index) => <button type="button" key={question.id} className={`${answers[question.id]?.trim() ? "answered" : ""} ${index === questionIndex ? "active" : ""}`} onClick={() => setQuestionIndex(index)} aria-label={`Go to question ${index + 1}`}/>)}</div><div className="question-navigation"><button className="button secondary" onClick={questionIndex === 0 ? onClose : () => setQuestionIndex(questionIndex - 1)}>{questionIndex === 0 ? "Cancel" : "Back"}</button>{proposal && questionIndex < proposal.questions.length - 1 ? <button className="button primary" disabled={!currentQuestion || !answers[currentQuestion.id]?.trim()} onClick={() => setQuestionIndex(questionIndex + 1)}>Next question</button> : <button className="button primary" disabled={!complete || submitting} onClick={() => void submit()}>{submitting ? "Rewriting ticket…" : "Submit & refine ticket"}</button>}</div></footer>
     </section>
   </div>;
 }

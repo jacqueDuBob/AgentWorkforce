@@ -1,6 +1,6 @@
 import { ensureSupabaseSession, supabase } from "./supabase";
 import { COLUMNS, type ColumnId } from "./types";
-import { DEFAULT_AGENT_INSTRUCTIONS, type ColumnAgent } from "./agent-types";
+import { DEFAULT_AGENT_INSTRUCTIONS, type AgentRun, type ColumnAgent } from "./agent-types";
 
 const defaults = (): ColumnAgent[] => COLUMNS.map((column) => ({
   column, name: `${column} Agent`, modelName: "gpt-5.6-luna", instructions: DEFAULT_AGENT_INSTRUCTIONS[column],
@@ -41,4 +41,16 @@ export async function queueAgentRun(ticketId: string, agent: ColumnAgent, trigge
   await ensureSupabaseSession();
   const { error } = await supabase.from("agent_runs").insert({ ticket_id: ticketId, column_name: agent.column, agent_name: agent.name, model_name: agent.modelName, trigger_type: trigger, status: "queued", output });
   if (error) throw error;
+}
+
+export async function loadAgentRuns(): Promise<AgentRun[]> {
+  if (!supabase) return [];
+  await ensureSupabaseSession();
+  const { data, error } = await supabase.from("agent_runs").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id, ticketId: row.ticket_id, column: row.column_name, agentName: row.agent_name,
+    modelName: row.model_name ?? "", trigger: row.trigger_type, status: row.status,
+    output: row.output ?? undefined, error: row.error ?? "", createdAt: row.created_at, updatedAt: row.updated_at,
+  }));
 }

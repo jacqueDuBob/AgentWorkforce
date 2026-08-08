@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import type { GitHubRepository, Ticket } from "@/lib/types";
-import type { RefinementProposal } from "@/lib/refinement-types";
+import type { RefinedTicketContent, RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 
 interface RefinementRequest {
+  action?: "questions" | "rewrite";
   ticket: Pick<Ticket, "title" | "description" | "acceptanceCriteria" | "priority" | "tags">;
   repositories: GitHubRepository[];
   instructions: string;
   masterInstructions: string;
   modelName: string;
+  answers?: RefinementAnswer[];
 }
 
 interface ResponsesApiResult {
@@ -53,6 +55,16 @@ const schema = {
   },
 };
 
+const rewriteSchema = {
+  type: "object", additionalProperties: false,
+  required: ["title", "description", "acceptanceCriteria", "priority", "tags"],
+  properties: {
+    title: { type: "string" }, description: { type: "string" }, acceptanceCriteria: { type: "string" },
+    priority: { type: "string", enum: ["Low", "Medium", "High", "Urgent"] },
+    tags: { type: "array", maxItems: 3, items: { type: "string" } },
+  },
+};
+
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "OPENAI_API_KEY is not configured." }, { status: 503 });
@@ -66,10 +78,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "A valid ticket, repository list, and model are required." }, { status: 400 });
   }
 
+  if (body.action === "rewrite" && (!Array.isArray(body.answers) || body.answers.some((answer) => !answer.answer?.trim()))) {
+    return NextResponse.json({ error: "Complete refinement answers are required." }, { status: 400 });
+  }
+
   const repositoryList = body.repositories.length
     ? body.repositories.map((repository) => `- id=${repository.id}; name=${repository.owner}/${repository.name}; default_branch=${repository.defaultBranch}`).join("\n")
     : "No repositories are connected.";
-  const prompt = `You are a product refinement agent. Classify which connected repository best fits the ticket, using only an exact repository id from the list. If none fit or none exist, return an empty repositoryId. Treat the selected repository metadata as context. Then ask 2-5 concise questions that resolve the most important ambiguities. Each question must have exactly three short, realistic, mutually exclusive suggested answers. Do not include an \"Other\" suggestion because the UI supplies a free-text answer.\n\nWorkspace master instructions:\n${body.masterInstructions || "No workspace instructions configured."}\n\nAgent instructions:\n${body.instructions}\n\nRepositories:\n${repositoryList}\n\nTicket:\n${JSON.stringify(body.ticket, null, 2)}`;
+  const context = `Workspace master instructions:\n${body.masterInstructions || "No workspace instructions configured."}\n\nAgent instructions:\n${body.instructions}\n\nRepositories:\n${repositoryList}\n\nTicket:\n${JSON.stringify(body.ticket, null, 2)}`;
+  const rewriting = body.action === "rewrite";
+  const prompt = rewriting
+    ? `You are a product refinement agent. Rewrite the ticket using the user's answers. Preserve valid existing detail, remove ambiguity resolved by the answers, and make the description and acceptance criteria implementation-ready. Acceptance criteria should be concise, testable lines. Do not invent requirements. Return no more than three short tags.\n\nAnswers:\n${JSON.stringify(body.answers, null, 2)}\n\n${context}`
+    : `You are a product refinement agent. Classify which connected repository best fits the ticket, using only an exact repository id from the list. If none fit or none exist, return an empty repositoryId. Treat the selected repository metadata as context. Then ask 2-5 concise questions that resolve the most important ambiguities. Each question must have exactly three short, realistic, mutually exclusive suggested answers. Do not include an \"Other\" suggestion because the UI supplies a free-text answer.\n\n${context}`;
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -77,7 +97,7 @@ export async function POST(request: Request) {
     body: JSON.stringify({
       model: modelName,
       input: prompt,
-      text: { format: { type: "json_schema", name: "refinement_proposal", strict: true, schema } },
+      text: { format: { type: "json_schema", name: rewriting ? "refined_ticket" : "refinement_proposal", strict: true, schema: rewriting ? rewriteSchema : schema } },
     }),
   });
   const result = await response.json() as ResponsesApiResult;
@@ -87,6 +107,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (rewriting) return NextResponse.json(JSON.parse(outputText) as RefinedTicketContent);
     const proposal = JSON.parse(outputText) as RefinementProposal;
     const repositoryIds = new Set(body.repositories.map((repository) => repository.id));
     if (proposal.repositoryId && !repositoryIds.has(proposal.repositoryId)) proposal.repositoryId = "";

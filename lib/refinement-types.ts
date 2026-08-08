@@ -15,3 +15,11 @@ export interface RefinementAnswer {
   question: string;
   answer: string;
 }
+
+export interface RefinedTicketContent {
+  title: string;
+  description: string;
+  acceptanceCriteria: string;
+  priority: "Low" | "Medium" | "High" | "Urgent";
+  tags: string[];
+}

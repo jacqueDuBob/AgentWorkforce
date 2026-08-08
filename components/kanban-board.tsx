@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GripVertical, LayoutGrid, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, X } from "lucide-react";
+import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GripVertical, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, X } from "lucide-react";
 import { COLUMNS, type ColumnId, type GitHubRepository, type Ticket, type TicketDraft } from "@/lib/types";
 import { loadTickets, persistTickets, removeTicket } from "@/lib/ticket-store";
 import { TicketForm } from "./ticket-form";
@@ -15,9 +15,10 @@ import type { ColumnAgent } from "@/lib/agent-types";
 import { RepositorySetup } from "./repository-setup";
 import { addRepository, deleteRepository, loadRepositories } from "@/lib/repository-store";
 import { RefinementDialog } from "./refinement-dialog";
-import type { RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
+import type { RefinedTicketContent, RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 import { WorkspaceInstructions } from "./workspace-instructions";
 import { loadMasterInstructions, saveMasterInstructions } from "@/lib/workspace-store";
+import { QueueDialog } from "./queue-dialog";
 
 const priorityClass = (priority: Ticket["priority"]) => `priority ${priority.toLowerCase()}`;
 
@@ -56,6 +57,7 @@ function DeleteDialog({ ticket, onCancel, onConfirm }: { ticket?: Ticket; onCanc
 export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]); const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [instructionsOpen, setInstructionsOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]); const [masterInstructions, setMasterInstructions] = useState("");
+  const [queueOpen, setQueueOpen] = useState(false);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -67,16 +69,16 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const save = (draft: TicketDraft) => { const now = new Date().toISOString(); const next = editing ? tickets.map((t) => t.id === editing.id ? { ...t, ...draft, updatedAt: now } : t) : [...tickets, { ...draft, id: crypto.randomUUID(), position: tickets.filter((t) => t.status === draft.status).length, createdAt: now, updatedAt: now }]; setFormOpen(false); void saveAll(next); };
   const confirmDelete = async () => { if (!deleting) return; const ticket = deleting; const previous = tickets; const next = tickets.filter((item) => item.id !== ticket.id); setDeleting(undefined); setTickets(next); try { await removeTicket(ticket.id); } catch { setTickets(previous); setError("The item could not be deleted."); } };
   const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (ticket.status === "In Refinement" && trigger === "manual") { setRefining(ticket); return; } if (!ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { await queueAgentRun(ticket.id, agent, trigger); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch { setError("The agent could not be started. Run the latest database migration and try again."); } };
-  const submitRefinement = async (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[]) => {
+  const submitRefinement = async (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[], rewrite: RefinedTicketContent) => {
     if (!refining) return;
     const agent = agents.find((item) => item.column === "In Refinement");
     if (!agent) throw new Error("The refinement agent is not configured.");
     if (repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(repositoryId)) throw new Error(`${agent.name} is not allowed to use the selected repository.`);
-    const updated = { ...refining, repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
+    const updated = { ...refining, ...rewrite, tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
     await persistTickets(tickets.map((ticket) => ticket.id === updated.id ? updated : ticket));
-    await queueAgentRun(updated.id, agent, "manual", { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers } });
+    await queueAgentRun(updated.id, agent, "manual", { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers, rewrittenTicket: rewrite } });
     setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
-    setRefining(undefined); setNotice(`${agent.name} queued for “${updated.title}” with your refinement answers.`);
+    setRefining(undefined); setNotice(`“${updated.title}” was rewritten and ${agent.name} was queued.`);
   };
   const dragStart = (event: DragStartEvent) => setActive(tickets.find((t) => t.id === event.active.id));
   const dragEnd = async (event: DragEndEvent) => {
@@ -117,7 +119,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const updateMasterInstructions = async (instructions: string) => { await saveMasterInstructions(instructions); setMasterInstructions(instructions.trim()); };
 
   return <main>
-    <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><div className="header-menu-wrap" ref={headerMenuRef}><button className="header-menu-button" onClick={() => setHeaderMenu(!headerMenu)} aria-label="Open workspace menu" aria-expanded={headerMenu}><Menu size={19}/></button>{headerMenu && <div className="header-menu"><button onClick={() => { setHeaderMenu(false); setSetupOpen(true); }}><Settings2 size={16}/><span><strong>Column Setup</strong><small>Configure agents and automation</small></span></button><button onClick={() => { setHeaderMenu(false); setInstructionsOpen(true); }}><BookOpenText size={16}/><span><strong>Master instructions</strong><small>Shared context for every agent</small></span></button><button onClick={() => { setHeaderMenu(false); setRepositoriesOpen(true); }}><Github size={16}/><span><strong>GitHub repositories</strong><small>Manage workspace repositories</small></span></button><button onClick={onSignOut}><LogOut size={16}/><span><strong>Sign out</strong><small>{userEmail}</small></span></button></div>}</div></div></nav>
+    <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><div className="header-menu-wrap" ref={headerMenuRef}><button className="header-menu-button" onClick={() => setHeaderMenu(!headerMenu)} aria-label="Open workspace menu" aria-expanded={headerMenu}><Menu size={19}/></button>{headerMenu && <div className="header-menu"><button onClick={() => { setHeaderMenu(false); setQueueOpen(true); }}><ListTodo size={16}/><span><strong>Agent queue</strong><small>View queued runs and their items</small></span></button><button onClick={() => { setHeaderMenu(false); setSetupOpen(true); }}><Settings2 size={16}/><span><strong>Column Setup</strong><small>Configure agents and automation</small></span></button><button onClick={() => { setHeaderMenu(false); setInstructionsOpen(true); }}><BookOpenText size={16}/><span><strong>Master instructions</strong><small>Shared context for every agent</small></span></button><button onClick={() => { setHeaderMenu(false); setRepositoriesOpen(true); }}><Github size={16}/><span><strong>GitHub repositories</strong><small>Manage workspace repositories</small></span></button><button onClick={onSignOut}><LogOut size={16}/><span><strong>Sign out</strong><small>{userEmail}</small></span></button></div>}</div></div></nav>
     <div className="workspace-header"><div><p className="eyebrow">Workspace / Product</p><h1>Delivery board</h1><p>Move every idea from first thought to live.</p></div><button className="button primary create" onClick={() => openNew()}><Plus size={18}/> Create item</button></div>
     <div className="toolbar"><label className="search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search work items…" aria-label="Search work items"/>{query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15}/></button>}</label><span className="result-count">{query ? "Clear search to move items" : `${visible.length} ${visible.length === 1 ? "item" : "items"}`}</span></div>
     {error && <div className="error-banner">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}
@@ -128,6 +130,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     {setupOpen && <ColumnSetup open agents={agents} repositories={repositories} onClose={() => setSetupOpen(false)} onSave={updateAgent}/>}
     {repositoriesOpen && <RepositorySetup repositories={repositories} onClose={() => setRepositoriesOpen(false)} onAdd={createRepository} onDelete={removeRepository}/>}
     {instructionsOpen && <WorkspaceInstructions instructions={masterInstructions} onClose={() => setInstructionsOpen(false)} onSave={updateMasterInstructions}/>}
+    {queueOpen && <QueueDialog tickets={tickets} onClose={() => setQueueOpen(false)}/>}
     {refining && agents.find((agent) => agent.column === "In Refinement") && <RefinementDialog key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "In Refinement")!} repositories={repositories.filter((repository) => { const agent = agents.find((item) => item.column === "In Refinement"); return !agent || agent.repositoryAccess === "all" || agent.allowedRepositoryIds.includes(repository.id); })} masterInstructions={masterInstructions} onClose={() => setRefining(undefined)} onSubmit={submitRefinement}/>}
   </main>;
 }
