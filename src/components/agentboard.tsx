@@ -213,9 +213,6 @@ export function AgentBoard() {
     try {
       const payload = await requestJson<BoardState>("/api/board");
       setSnapshot(payload);
-      if (!selectedCardId && payload.cards[0]) {
-        setSelectedCardId(payload.cards[0].id);
-      }
       setState("ready");
       setError(null);
     } catch (loadError) {
@@ -233,6 +230,23 @@ export function AgentBoard() {
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selectedCardId) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedCardId(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedCardId]);
 
   const selectedCard = useMemo(() => snapshot?.cards.find((card) => card.id === selectedCardId) ?? null, [snapshot, selectedCardId]);
 
@@ -260,7 +274,7 @@ export function AgentBoard() {
       const next = await action();
       setSnapshot(next);
       if (!next.cards.some((card) => card.id === selectedCardId)) {
-        setSelectedCardId(next.cards[0]?.id ?? null);
+        setSelectedCardId(null);
       }
       setError(null);
     } catch (mutationError) {
@@ -317,10 +331,6 @@ export function AgentBoard() {
         }),
       });
       const board = await requestJson<BoardState>("/api/board");
-      const latestCard = [...board.cards].reverse()[0];
-      if (latestCard) {
-        setSelectedCardId(latestCard.id);
-      }
       return board;
     });
 
@@ -414,6 +424,10 @@ export function AgentBoard() {
     : [];
   const currentTests = selectedCard ? snapshot.testRuns.filter((testRun) => testRun.cardId === selectedCard.id) : [];
 
+  const handleSelectCard = (cardId: string) => {
+    setSelectedCardId((prev) => (prev === cardId ? null : cardId));
+  };
+
   const activeCard = activeCardId ? snapshot.cards.find((card) => card.id === activeCardId) ?? null : null;
 
   return (
@@ -473,7 +487,7 @@ export function AgentBoard() {
                   label={stage.label}
                   cards={cardsByStage.get(stage.id) ?? []}
                   selectedCardId={selectedCardId}
-                  onSelectCard={setSelectedCardId}
+                  onSelectCard={handleSelectCard}
                   activeCard={activeCard}
                   canDrop={canDrop}
                   snapshot={snapshot}
@@ -481,12 +495,22 @@ export function AgentBoard() {
               ))}
           </section>
 
-          <aside className="detail">
-            {!selectedCard ? (
-              <p className="empty">Select a card to inspect details.</p>
-            ) : (
-              <>
-                <h2>Card Detail</h2>
+          {selectedCard ? (
+            <>
+              <button
+                type="button"
+                className="detail-backdrop"
+                aria-label="Close card detail"
+                onClick={() => setSelectedCardId(null)}
+              />
+              <aside className="detail detail-overlay" role="dialog" aria-modal="false" aria-label="Card detail">
+                <div className="detail-header">
+                  <h2>Card Detail</h2>
+                  <button type="button" onClick={() => setSelectedCardId(null)}>
+                    Close
+                  </button>
+                </div>
+
                 <label>
                   Title
                   <input
@@ -638,10 +662,10 @@ export function AgentBoard() {
                 </div>
 
                 <div className="row-actions">
-                  <button type="button" onClick={() => void approve("remediation", "Approved one extra remediation attempt")}> 
+                  <button type="button" onClick={() => void approve("remediation", "Approved one extra remediation attempt")}>
                     Approve Remediation Attempt
                   </button>
-                  <button type="button" onClick={() => void approve("merge", "Approved merge after test evidence review")}> 
+                  <button type="button" onClick={() => void approve("merge", "Approved merge after test evidence review")}>
                     Approve Merge
                   </button>
                 </div>
@@ -783,9 +807,9 @@ export function AgentBoard() {
                     )}
                   </div>
                 </section>
-              </>
-            )}
-          </aside>
+              </aside>
+            </>
+          ) : null}
         </main>
       </DndContext>
     </div>
