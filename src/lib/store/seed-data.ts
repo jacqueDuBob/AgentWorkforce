@@ -11,6 +11,8 @@ import { makeId, nowIso } from "@/lib/utils/id";
 
 export const SEED_IDS = {
   ownerId: "b90fddd2-42c5-44f4-9172-9922db8e95b7",
+  boardId: "7f951bea-4fc8-4f8a-8548-5b898ba73488",
+  workflowDefinitionId: "42d139bd-ee57-4f0c-ae5f-71350ec5e707",
   repositories: {
     webPortal: "7e07a67e-5f16-4c34-b793-f8e177f2625f",
     apiGateway: "f788c732-bddd-4287-84fa-f3237ca3cd88",
