@@ -6,6 +6,8 @@ export const COLUMNS = [
 export type ColumnId = (typeof COLUMNS)[number];
 export type Priority = "Low" | "Medium" | "High" | "Urgent";
 
+export interface GitHubRepository { id: string; owner: string; name: string; defaultBranch: string; }
+
 export interface Ticket {
   id: string;
   title: string;
@@ -14,6 +16,8 @@ export interface Ticket {
   tags: string[];
   assignee: string;
   acceptanceCriteria: string;
+  repositoryId: string;
+  baseBranch: string;
   status: ColumnId;
   position: number;
   createdAt: string;

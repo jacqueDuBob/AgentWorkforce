@@ -9,9 +9,8 @@ export interface ColumnAgent {
   instructions: string;
   startMode: StartMode;
   enabled: boolean;
-  githubOwner: string;
-  githubRepo: string;
-  baseBranch: string;
+  repositoryAccess: "all" | "selected";
+  allowedRepositoryIds: string[];
 }
 
 export const DEFAULT_AGENT_INSTRUCTIONS: Record<ColumnId, string> = {

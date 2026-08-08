@@ -2,18 +2,18 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import { COLUMNS, type ColumnId, type Priority, type Ticket, type TicketDraft } from "@/lib/types";
+import { COLUMNS, type ColumnId, type GitHubRepository, type Priority, type Ticket, type TicketDraft } from "@/lib/types";
 
 const priorities: Priority[] = ["Low", "Medium", "High", "Urgent"];
-const emptyDraft = (status: ColumnId): TicketDraft => ({ title: "", description: "", priority: "Medium", tags: [], assignee: "", acceptanceCriteria: "", status });
+const emptyDraft = (status: ColumnId): TicketDraft => ({ title: "", description: "", priority: "Medium", tags: [], assignee: "", acceptanceCriteria: "", repositoryId: "", baseBranch: "", status });
 
-export function TicketForm({ open, ticket, initialStatus, onClose, onSave }: { open: boolean; ticket?: Ticket; initialStatus: ColumnId; onClose: () => void; onSave: (draft: TicketDraft) => void }) {
+export function TicketForm({ open, ticket, repositories, initialStatus, onClose, onSave }: { open: boolean; ticket?: Ticket; repositories: GitHubRepository[]; initialStatus: ColumnId; onClose: () => void; onSave: (draft: TicketDraft) => void }) {
   if (!open) return null;
-  return <TicketFormContent key={ticket?.id ?? `new-${initialStatus}`} ticket={ticket} initialStatus={initialStatus} onClose={onClose} onSave={onSave}/>;
+  return <TicketFormContent key={ticket?.id ?? `new-${initialStatus}`} ticket={ticket} repositories={repositories} initialStatus={initialStatus} onClose={onClose} onSave={onSave}/>;
 }
 
-function TicketFormContent({ ticket, initialStatus, onClose, onSave }: { ticket?: Ticket; initialStatus: ColumnId; onClose: () => void; onSave: (draft: TicketDraft) => void }) {
-  const [draft, setDraft] = useState<TicketDraft>(() => ticket ? { title: ticket.title, description: ticket.description, priority: ticket.priority, tags: ticket.tags, assignee: ticket.assignee, acceptanceCriteria: ticket.acceptanceCriteria, status: ticket.status } : emptyDraft(initialStatus));
+function TicketFormContent({ ticket, repositories, initialStatus, onClose, onSave }: { ticket?: Ticket; repositories: GitHubRepository[]; initialStatus: ColumnId; onClose: () => void; onSave: (draft: TicketDraft) => void }) {
+  const [draft, setDraft] = useState<TicketDraft>(() => ticket ? { title: ticket.title, description: ticket.description, priority: ticket.priority, tags: ticket.tags, assignee: ticket.assignee, acceptanceCriteria: ticket.acceptanceCriteria, repositoryId: ticket.repositoryId, baseBranch: ticket.baseBranch, status: ticket.status } : emptyDraft(initialStatus));
   const [tag, setTag] = useState("");
   const addTag = () => {
     const value = tag.trim();
@@ -34,6 +34,7 @@ function TicketFormContent({ ticket, initialStatus, onClose, onSave }: { ticket?
           <label>Status<select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as ColumnId })}>{COLUMNS.map((column) => <option key={column}>{column}</option>)}</select></label>
         </div>
         <label>Assignee<input value={draft.assignee} onChange={(e) => setDraft({ ...draft, assignee: e.target.value })} placeholder="Name or role" /></label>
+        <div className="form-grid"><label>GitHub repository<select value={draft.repositoryId} onChange={(e) => { const repository = repositories.find((item) => item.id === e.target.value); setDraft({ ...draft, repositoryId: e.target.value, baseBranch: repository?.defaultBranch ?? "" }); }}><option value="">No repository</option>{repositories.map((repository) => <option value={repository.id} key={repository.id}>{repository.owner}/{repository.name}</option>)}</select></label><label>Base branch<input value={draft.baseBranch} disabled={!draft.repositoryId} onChange={(e) => setDraft({ ...draft, baseBranch: e.target.value })} placeholder="main"/></label></div>
         <label>Tags <span className="label-hint">up to 3</span><div className="tag-input"><input value={tag} disabled={draft.tags.length >= 3} onChange={(e) => setTag(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }} placeholder="Type and press Enter"/><button type="button" onClick={addTag} disabled={!tag.trim() || draft.tags.length >= 3}>Add</button></div></label>
         {draft.tags.length > 0 && <div className="tag-list">{draft.tags.map((item) => <button type="button" key={item} className="tag" onClick={() => setDraft({ ...draft, tags: draft.tags.filter((t) => t !== item) })}>{item}<X size={12}/></button>)}</div>}
         <label>Acceptance criteria<textarea rows={3} value={draft.acceptanceCriteria} onChange={(e) => setDraft({ ...draft, acceptanceCriteria: e.target.value })} placeholder="How will we know this is done?" /></label>
