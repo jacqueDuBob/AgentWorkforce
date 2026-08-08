@@ -36,9 +36,9 @@ export async function saveColumnAgent(agent: ColumnAgent) {
   }
 }
 
-export async function queueAgentRun(ticketId: string, agent: ColumnAgent, trigger: "manual" | "automatic") {
+export async function queueAgentRun(ticketId: string, agent: ColumnAgent, trigger: "manual" | "automatic", output?: Record<string, unknown>) {
   if (!supabase) throw new Error("Supabase is required to run agents.");
   await ensureSupabaseSession();
-  const { error } = await supabase.from("agent_runs").insert({ ticket_id: ticketId, column_name: agent.column, agent_name: agent.name, trigger_type: trigger, status: "queued" });
+  const { error } = await supabase.from("agent_runs").insert({ ticket_id: ticketId, column_name: agent.column, agent_name: agent.name, trigger_type: trigger, status: "queued", output });
   if (error) throw error;
 }

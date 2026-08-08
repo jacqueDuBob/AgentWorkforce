@@ -15,7 +15,7 @@ export interface ColumnAgent {
 
 export const DEFAULT_AGENT_INSTRUCTIONS: Record<ColumnId, string> = {
   "New": "Review the request, identify its intent, and flag missing information.",
-  "In Refinement": "Research the request and improve the description and acceptance criteria.",
+  "In Refinement": "Classify the best repository from the ticket content and ask focused questions that resolve missing requirements before implementation.",
   "Ready": "Confirm the work is actionable and produce a concise implementation plan.",
   "In Work": "Implement the approved change in the configured GitHub repository on a new branch.",
   "Work Completed": "Review the implementation for completeness and prepare a pull request summary.",
