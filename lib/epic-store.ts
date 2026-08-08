@@ -5,13 +5,23 @@ const RECOMMENDATIONS_KEY = "flowboard-epic-recommendations";
 const SESSIONS_KEY = "flowboard-breakout-sessions";
 const read = <T>(key: string): T[] => { try { return JSON.parse(localStorage.getItem(key) || "[]") as T[]; } catch { return []; } };
 const write = <T>(key: string, values: T[]) => localStorage.setItem(key, JSON.stringify(values));
+const recommendationFromRow = (row: Record<string, unknown>): EpicRecommendation => ({
+  id: String(row.id), ticketId: String(row.ticket_id), reason: String(row.reason),
+  recommendedBy: String(row.recommended_by), status: row.status as EpicRecommendation["status"],
+  createdAt: String(row.created_at),
+});
 
 export async function recommendEpic(ticketId: string, reason: string, recommendedBy: string): Promise<EpicRecommendation> {
   if (supabase) {
     await ensureSupabaseSession();
+    // Reopening a pending recommendation should reopen the confirmation, not
+    // collide with the database's one-pending-recommendation constraint.
+    const { data: pending, error: lookupError } = await supabase.from("epic_recommendations").select("*").eq("ticket_id", ticketId).eq("status", "pending").maybeSingle();
+    if (lookupError) throw lookupError;
+    if (pending) return recommendationFromRow(pending);
     const { data, error } = await supabase.from("epic_recommendations").insert({ ticket_id: ticketId, reason, recommended_by: recommendedBy }).select("*").single();
     if (error) throw error;
-    return { id: data.id, ticketId: data.ticket_id, reason: data.reason, recommendedBy: data.recommended_by, status: data.status, createdAt: data.created_at };
+    return recommendationFromRow(data);
   }
   const recommendation: EpicRecommendation = { id: crypto.randomUUID(), ticketId, reason, recommendedBy, status: "pending", createdAt: new Date().toISOString() };
   write(RECOMMENDATIONS_KEY, [...read<EpicRecommendation>(RECOMMENDATIONS_KEY).filter((item) => item.ticketId !== ticketId || item.status !== "pending"), recommendation]);
