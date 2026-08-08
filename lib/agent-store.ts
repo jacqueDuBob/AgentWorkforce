@@ -1,6 +1,6 @@
 import { ensureSupabaseSession, supabase } from "./supabase";
 import { COLUMNS, type ColumnId } from "./types";
-import { DEFAULT_AGENT_INSTRUCTIONS, type AgentRun, type ColumnAgent } from "./agent-types";
+import { DEFAULT_AGENT_INSTRUCTIONS, type AgentRun, type AgentRunStatus, type ColumnAgent } from "./agent-types";
 
 const defaults = (): ColumnAgent[] => COLUMNS.map((column) => ({
   column, name: `${column} Agent`, modelName: "gpt-5.6-luna", instructions: DEFAULT_AGENT_INSTRUCTIONS[column],
@@ -39,8 +39,32 @@ export async function saveColumnAgent(agent: ColumnAgent) {
 export async function queueAgentRun(ticketId: string, agent: ColumnAgent, trigger: "manual" | "automatic", output?: Record<string, unknown>) {
   if (!supabase) throw new Error("Supabase is required to run agents.");
   await ensureSupabaseSession();
-  const { error } = await supabase.from("agent_runs").insert({ ticket_id: ticketId, column_name: agent.column, agent_name: agent.name, model_name: agent.modelName, trigger_type: trigger, status: "queued", output });
+  const { data, error } = await supabase.from("agent_runs").insert({ ticket_id: ticketId, column_name: agent.column, agent_name: agent.name, model_name: agent.modelName, trigger_type: trigger, status: "queued", output }).select("id").single();
   if (error) throw error;
+  return data.id as string;
+}
+
+export async function updateAgentRunStatus(id: string, status: AgentRunStatus, details?: { output?: Record<string, unknown>; error?: string }) {
+  if (!supabase) throw new Error("Supabase is required to update agent runs.");
+  await ensureSupabaseSession();
+  const values: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+  if (details && "output" in details) values.output = details.output;
+  if (details && "error" in details) values.error = details.error || null;
+  const { error } = await supabase.from("agent_runs").update(values).eq("id", id);
+  if (error) throw error;
+}
+
+export async function processAgentRun<T extends Record<string, unknown>>(id: string, process: () => Promise<T>) {
+  await updateAgentRunStatus(id, "in_progress", { error: "" });
+  try {
+    const output = await process();
+    await updateAgentRunStatus(id, "finished", { output, error: "" });
+    return output;
+  } catch (cause) {
+    const error = cause instanceof Error ? cause.message : "The agent run failed.";
+    await updateAgentRunStatus(id, "finished", { error });
+    throw cause;
+  }
 }
 
 export async function loadAgentRuns(): Promise<AgentRun[]> {
