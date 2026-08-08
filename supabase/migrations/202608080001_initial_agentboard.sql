@@ -238,3 +238,11 @@ create table if not exists durable_jobs (
   created_at timestamptz not null default now(),
   unique(queue_name, idempotency_key)
 );
+
+create table if not exists board_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  snapshot jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);

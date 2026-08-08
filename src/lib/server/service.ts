@@ -7,47 +7,47 @@ import { getStore } from "@/lib/store";
 const ACTOR_ID = "single-user-owner";
 
 export function getBoardSnapshot() {
-  return getStore().getSnapshot();
+  return Promise.resolve(getStore().getSnapshot());
 }
 
 export function createCard(input: unknown) {
   const parsed = createCardInputSchema.parse(input);
-  return getStore().createCard(parsed);
+  return Promise.resolve(getStore().createCard(parsed));
 }
 
 export function updateCard(cardId: string, input: unknown) {
   const parsed = updateCardInputSchema.parse(input);
-  return getStore().updateCard(cardId, parsed);
+  return Promise.resolve(getStore().updateCard(cardId, parsed));
 }
 
 export function transitionCard(cardId: string, input: unknown) {
   const parsed = transitionInputSchema.parse(input);
   const idempotencyKey = parsed.idempotencyKey ?? `manual-${cardId}-${parsed.targetStageId}-${crypto.randomUUID()}`;
-  return getStore().transitionCard(cardId, parsed.targetStageId, idempotencyKey, ACTOR_ID);
+  return Promise.resolve(getStore().transitionCard(cardId, parsed.targetStageId, idempotencyKey, ACTOR_ID));
 }
 
 export function recordApproval(cardId: string, input: unknown) {
   const parsed = approvalInputSchema.parse(input);
-  return getStore().approve(cardId, parsed, ACTOR_ID);
+  return Promise.resolve(getStore().approve(cardId, parsed, ACTOR_ID));
 }
 
 export function dismissCardFinding(cardId: string, input: unknown) {
   const parsed = dismissFindingInputSchema.parse(input);
-  return getStore().dismissFinding(cardId, parsed.findingId, parsed.justification, ACTOR_ID);
+  return Promise.resolve(getStore().dismissFinding(cardId, parsed.findingId, parsed.justification, ACTOR_ID));
 }
 
 export function updatePolicyMode(policyId: string, input: unknown) {
   const parsed = updatePolicyInputSchema.parse(input);
-  return getStore().setPolicyMode(policyId, parsed.mode);
+  return Promise.resolve(getStore().setPolicyMode(policyId, parsed.mode));
 }
 
 export function resetDemoData() {
-  return getStore().reset();
+  return Promise.resolve(getStore().reset());
 }
 
 export async function classifyCard(cardId: string) {
   const store = getStore();
-  const snapshot = store.getSnapshot();
+  const snapshot = await store.getSnapshot();
   const card = snapshot.cards.find((item) => item.id === cardId);
   if (!card) {
     throw new Error("Card not found.");
@@ -66,13 +66,13 @@ export async function classifyCard(cardId: string) {
     description: card.description,
   });
 
-  store.setClassification(cardId, classification.output);
+  await store.setClassification(cardId, classification.output);
   return store.getSnapshot();
 }
 
 export async function mergeCard(cardId: string) {
   const store = getStore();
-  const snapshot = store.getSnapshot();
+  const snapshot = await store.getSnapshot();
   const card = snapshot.cards.find((item) => item.id === cardId);
   if (!card) {
     throw new Error("Card not found.");

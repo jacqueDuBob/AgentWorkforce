@@ -4,9 +4,9 @@ import { getBoardSnapshot, resetDemoData } from "@/lib/server/service";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json(getBoardSnapshot());
+  return NextResponse.json(await getBoardSnapshot());
 }
 
 export async function POST() {
-  return NextResponse.json(resetDemoData());
+  return NextResponse.json(await resetDemoData());
 }

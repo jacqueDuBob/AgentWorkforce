@@ -7,7 +7,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const card = updateCard(id, body);
+    const card = await updateCard(id, body);
     return NextResponse.json({ card });
   } catch (error) {
     return NextResponse.json(

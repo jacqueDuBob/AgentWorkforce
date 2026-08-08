@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const card = createCard(body);
+    const card = await createCard(body);
     return NextResponse.json({ card }, { status: 201 });
   } catch (error) {
     return NextResponse.json(

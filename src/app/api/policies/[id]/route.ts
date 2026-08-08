@@ -7,7 +7,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const snapshot = updatePolicyMode(id, body);
+    const snapshot = await updatePolicyMode(id, body);
     return NextResponse.json(snapshot);
   } catch (error) {
     return NextResponse.json(

@@ -4,5 +4,5 @@ import { getBoardSnapshot } from "@/lib/server/service";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json({ repositories: getBoardSnapshot().repositories });
+  return NextResponse.json({ repositories: (await getBoardSnapshot()).repositories });
 }

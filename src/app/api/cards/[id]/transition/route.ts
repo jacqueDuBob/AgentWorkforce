@@ -7,7 +7,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const snapshot = transitionCard(id, body);
+    const snapshot = await transitionCard(id, body);
     return NextResponse.json(snapshot);
   } catch (error) {
     return NextResponse.json(

@@ -7,7 +7,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const snapshot = recordApproval(id, body);
+    const snapshot = await recordApproval(id, body);
     return NextResponse.json(snapshot);
   } catch (error) {
     return NextResponse.json(
