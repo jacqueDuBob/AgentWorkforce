@@ -6,6 +6,7 @@ interface RefinementRequest {
   ticket: Pick<Ticket, "title" | "description" | "acceptanceCriteria" | "priority" | "tags">;
   repositories: GitHubRepository[];
   instructions: string;
+  modelName: string;
 }
 
 const schema = {
@@ -41,8 +42,9 @@ export async function POST(request: Request) {
   try { body = await request.json() as RefinementRequest; }
   catch { return NextResponse.json({ error: "Invalid request." }, { status: 400 }); }
 
-  if (!body.ticket?.title || !Array.isArray(body.repositories)) {
-    return NextResponse.json({ error: "A ticket and repository list are required." }, { status: 400 });
+  const modelName = body.modelName?.trim() || process.env.OPENAI_REFINEMENT_MODEL || "gpt-5.6-luna";
+  if (!body.ticket?.title || !Array.isArray(body.repositories) || !/^[a-zA-Z0-9._:-]{1,100}$/.test(modelName)) {
+    return NextResponse.json({ error: "A valid ticket, repository list, and model are required." }, { status: 400 });
   }
 
   const repositoryList = body.repositories.length
@@ -54,9 +56,8 @@ export async function POST(request: Request) {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: process.env.OPENAI_REFINEMENT_MODEL || "gpt-5.6-luna",
+      model: modelName,
       input: prompt,
-      reasoning: { effort: "low" },
       text: { format: { type: "json_schema", name: "refinement_proposal", strict: true, schema } },
     }),
   });

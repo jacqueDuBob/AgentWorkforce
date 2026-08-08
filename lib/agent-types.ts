@@ -6,6 +6,7 @@ export interface ColumnAgent {
   id?: string;
   column: ColumnId;
   name: string;
+  modelName: string;
   instructions: string;
   startMode: StartMode;
   enabled: boolean;

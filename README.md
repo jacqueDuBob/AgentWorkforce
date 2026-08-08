@@ -14,11 +14,12 @@ The app requires a Supabase project for authentication and board storage:
 1. Create a Supabase project and run `supabase/migrations/001_create_tickets.sql` in the SQL editor.
 2. Run `supabase/migrations/002_add_column_agents.sql` to add column-agent configuration and the execution queue.
 3. Run `supabase/migrations/003_refactor_repositories.sql` to add workspace repositories and ticket-level repository selection.
-4. Copy `.env.example` to `.env.local` and add the project URL and publishable/anon key.
-5. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
-6. Restart the development server and create your first account.
+4. Run `supabase/migrations/004_add_agent_models.sql` to add per-agent model configuration and run-level model history.
+5. Copy `.env.example` to `.env.local` and add the project URL and publishable/anon key.
+6. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+7. Restart the development server and create your first account.
 
-To use the interactive refinement agent, also set `OPENAI_API_KEY` in `.env.local`. You can optionally set `OPENAI_REFINEMENT_MODEL`; it defaults to `gpt-5.6-luna`.
+To use the interactive refinement agent, also set `OPENAI_API_KEY` in `.env.local`. `OPENAI_REFINEMENT_MODEL` is the fallback for requests without a saved agent model; new agents default to `gpt-5.6-luna`.
 
 ## Deploy to Vercel
 

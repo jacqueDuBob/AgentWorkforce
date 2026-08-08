@@ -24,7 +24,7 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
     const controller = new AbortController();
     fetch("/api/refinement", {
       method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticket, repositories, instructions: agent.instructions }),
+      body: JSON.stringify({ ticket, repositories, instructions: agent.instructions, modelName: agent.modelName }),
     }).then(async (response) => {
       const data = await response.json() as RefinementProposal & { error?: string };
       if (!response.ok) throw new Error(data.error || "Could not start the refinement agent.");
