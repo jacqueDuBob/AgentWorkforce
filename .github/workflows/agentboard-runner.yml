@@ -1,0 +1,50 @@
+name: AgentBoard Runner Contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      card_id:
+        description: AgentBoard card ID
+        required: true
+      branch:
+        description: Task branch name
+        required: true
+      role:
+        description: Agent role (developer/reviewer/tester)
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  run-agent-job:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Execute bounded role command
+        run: |
+          echo "Running role ${{ github.event.inputs.role }} for card ${{ github.event.inputs.card_id }}"
+          mkdir -p .agentboard
+          echo '{"status":"completed","role":"'"${{ github.event.inputs.role }}"'","cardId":"'"${{ github.event.inputs.card_id }}"'"}' > .agentboard/result.json
+
+      - name: Upload structured result
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentboard-result-${{ github.event.inputs.card_id }}
+          path: .agentboard/result.json
+
+      - name: Notes
+        run: |
+          echo "Runner must never merge. AgentBoard server handles approval and merge policy checks."

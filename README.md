@@ -1,36 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgentBoard (MVP Vertical Slice)
 
-## Getting Started
+AgentBoard is a single-user AI-workforce Kanban command center for software delivery tasks.
 
-First, run the development server:
+This repository implements the first production-style vertical slice with:
+- Stateful workflow engine (not orchestration-agent driven)
+- Policy-driven transitions (`automatic`, `manual`, `conditional`)
+- Review loop controls (3 automatic loops + one manual-approval credit per extra attempt)
+- Findings, approvals, run history, artifacts, and cost tracking
+- Server-side GitHub integration foundations and webhook signature verification
+- OpenAI Responses adapter with deterministic demo provider
+- Demo mode for local no-cost, no-merge execution
 
+## Quick Start
+
+1. Install dependencies:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Configure environment:
+```bash
+cp .env.example .env.local
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Run in demo mode:
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Open http://localhost:3000
 
-## Learn More
+## Verification
 
-To learn more about Next.js, take a look at the following resources:
+Run all checks:
+```bash
+npm run check
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Or individually:
+```bash
+npm run lint
+npm run typecheck
+npm run test:run
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Features in this slice
 
-## Deploy on Vercel
+- Responsive command-center Kanban board
+- Drag-and-drop when policy allows transition
+- Card create/edit and repository association
+- Structured classification output model
+- Development/Review/Test run records with artifacts
+- Findings grouped by severity and status
+- Automatic remediation loops on unresolved findings (including informational/low)
+- Block after three automatic loops until manual remediation approval
+- Exactly one additional remediation attempt per approval
+- Merge blocked until explicit merge approval is recorded
+- Transition policy dropdowns persisted in domain state
+- Workflow timeline with transition audit logs
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project Structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/domain`: Workflow state machine and invariants
+- `src/lib/store`: Demo persistence and seed state
+- `src/lib/providers/github`: Demo + GitHub App provider + webhook verification
+- `src/lib/providers/models`: Demo + OpenAI Responses provider
+- `src/app/api`: Board/cards/policies/approval/webhook routes
+- `src/components/agentboard.tsx`: Command-center UI
+- `supabase/migrations`: SQL schema
+- `supabase/seed`: Seed SQL
+- `docs`: Architecture and setup notes
+
+## Supabase Setup
+
+Use the migration and seed SQL files:
+- `supabase/migrations/202608080001_initial_agentboard.sql`
+- `supabase/seed/seed.sql`
+
+## GitHub App Setup (least privilege)
+
+Recommended repository permissions:
+- Contents: Read & write
+- Pull requests: Read & write
+- Actions: Read
+- Checks: Read
+
+Required env:
+- `GITHUB_APP_ID`
+- `GITHUB_APP_PRIVATE_KEY`
+- `GITHUB_INSTALLATION_ID`
+- `GITHUB_WEBHOOK_SECRET`
+
+Workflow runner contract:
+- `.github/workflows/agentboard-runner.yml`
+
+## OpenAI Setup
+
+Required env:
+- `OPENAI_API_KEY`
+
+Configurable:
+- `OPENAI_CLASSIFIER_MODEL`
+- `OPENAI_TIMEOUT_MS`
+
+## Known Limitations
+
+- Demo store is in-memory and resets on process restart.
+- Supabase runtime adapter is not yet wired for mutation path; schema and seed are provided.
+- GitHub worker callback ingestion is scaffolded via webhook verification endpoint; full callback mapping is a next milestone.
+- Cost estimation uses simplified token pricing heuristics.
+
+## Next Milestones
+
+1. Replace demo store with transactional Supabase-backed repository layer.
+2. Add pgmq-backed durable queue dispatcher for long-running workflow jobs.
+3. Complete GitHub callback/event projection into run and operation records.
+4. Add richer policy condition editor and repository-specific specialization governance.
