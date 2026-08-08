@@ -78,7 +78,7 @@ Use the migration and seed SQL files:
 - `supabase/migrations/202608080001_initial_agentboard.sql`
 - `supabase/seed/seed.sql`
 
-For the MVP persistence path, set `AGENTBOARD_DEMO_MODE=false` and provide your Supabase URL plus service role key. The app will store the board state as a snapshot in Supabase while keeping the in-memory demo store available for local no-cost runs.
+For the MVP persistence path, set `AGENTBOARD_DEMO_MODE=false` and provide your Supabase URL plus service role key. The app will use the normalized Supabase tables as the source of truth while keeping the in-memory demo store available for local no-cost runs.
 
 ## GitHub App Setup (least privilege)
 
@@ -109,7 +109,7 @@ Configurable:
 ## Known Limitations
 
 - Demo mode still uses in-memory state and resets on process restart.
-- Supabase MVP persistence currently stores the board as a JSON snapshot; the normalized schema remains available for the later repository-backed refactor.
+- Supabase MVP persistence now uses the normalized tables directly; the in-memory demo store still resets on process restart.
 - GitHub worker callback ingestion is scaffolded via webhook verification endpoint; full callback mapping is a next milestone.
 - Cost estimation uses simplified token pricing heuristics.
 
