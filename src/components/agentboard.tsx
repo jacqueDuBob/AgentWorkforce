@@ -204,6 +204,7 @@ export function AgentBoard() {
   const [snapshot, setSnapshot] = useState<BoardState | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [state, setState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -232,12 +233,16 @@ export function AgentBoard() {
   }, []);
 
   useEffect(() => {
-    if (!selectedCardId) {
+    if (!selectedCardId && !isCreateOpen) {
       return;
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (isCreateOpen) {
+          setIsCreateOpen(false);
+          return;
+        }
         setSelectedCardId(null);
       }
     };
@@ -246,7 +251,7 @@ export function AgentBoard() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [selectedCardId]);
+  }, [isCreateOpen, selectedCardId]);
 
   const selectedCard = useMemo(() => snapshot?.cards.find((card) => card.id === selectedCardId) ?? null, [snapshot, selectedCardId]);
 
@@ -321,12 +326,17 @@ export function AgentBoard() {
   };
 
   const createCard = async () => {
+    if (!createForm.title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+
     await mutateSnapshot(async () => {
       await requestJson<{ card: Card }>("/api/cards", {
         method: "POST",
         body: JSON.stringify({
-          title: createForm.title,
-          description: createForm.description,
+          title: createForm.title.trim(),
+          description: createForm.description.trim(),
           repositoryId: createForm.repositoryId || null,
         }),
       });
@@ -335,6 +345,7 @@ export function AgentBoard() {
     });
 
     setCreateForm({ title: "", description: "", repositoryId: "" });
+    setIsCreateOpen(false);
   };
 
   const saveCard = async () => {
@@ -438,6 +449,9 @@ export function AgentBoard() {
           <p>Single-user AI workforce Kanban command center</p>
         </div>
         <div className="topbar-actions">
+          <button type="button" onClick={() => setIsCreateOpen(true)}>
+            New Ticket
+          </button>
           <button type="button" onClick={() => void requestJson<BoardState>("/api/board", { method: "POST" }).then(setSnapshot)}>
             Reset Demo Data
           </button>
@@ -445,32 +459,56 @@ export function AgentBoard() {
         </div>
       </div>
 
-      <div className="create-panel">
-        <input
-          placeholder="New task title"
-          value={createForm.title}
-          onChange={(event) => setCreateForm((prev) => ({ ...prev, title: event.target.value }))}
-        />
-        <textarea
-          placeholder="Task description"
-          value={createForm.description}
-          onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
-        />
-        <select
-          value={createForm.repositoryId}
-          onChange={(event) => setCreateForm((prev) => ({ ...prev, repositoryId: event.target.value }))}
-        >
-          <option value="">No repository</option>
-          {snapshot.repositories.map((repo) => (
-            <option key={repo.id} value={repo.id}>
-              {repo.fullName}
-            </option>
-          ))}
-        </select>
-        <button type="button" disabled={saving} onClick={() => void createCard()}>
-          Create Card
-        </button>
-      </div>
+      {isCreateOpen ? (
+        <div className="create-overlay" role="presentation">
+          <button
+            type="button"
+            className="create-backdrop"
+            aria-label="Close create ticket"
+            onClick={() => setIsCreateOpen(false)}
+          />
+          <aside className="create-modal" role="dialog" aria-modal="true" aria-label="Create ticket">
+            <div className="detail-header">
+              <h2>Create New Ticket</h2>
+              <button type="button" onClick={() => setIsCreateOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="create-panel create-panel-modal">
+              <input
+                placeholder="New task title"
+                value={createForm.title}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, title: event.target.value }))}
+              />
+              <textarea
+                placeholder="Task description"
+                value={createForm.description}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
+              />
+              <select
+                value={createForm.repositoryId}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, repositoryId: event.target.value }))}
+              >
+                <option value="">No repository</option>
+                {snapshot.repositories.map((repo) => (
+                  <option key={repo.id} value={repo.id}>
+                    {repo.fullName}
+                  </option>
+                ))}
+              </select>
+              <div className="row-actions">
+                <button type="button" onClick={() => setIsCreateOpen(false)}>
+                  Cancel
+                </button>
+                <button type="button" disabled={saving} onClick={() => void createCard()}>
+                  Create Card
+                </button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      ) : null}
 
       {error ? <p className="error-banner">{error}</p> : null}
 

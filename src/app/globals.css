@@ -109,6 +109,40 @@ textarea {
   resize: vertical;
 }
 
+.create-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.create-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(5, 10, 16, 0.55);
+  padding: 0;
+}
+
+.create-modal {
+  position: relative;
+  width: min(52rem, calc(100vw - 2rem));
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  padding: 0.9rem;
+  background: rgba(9, 15, 22, 0.96);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.create-panel-modal {
+  margin-top: 0.8rem;
+  grid-template-columns: 1fr;
+}
+
 button {
   border: 1px solid var(--line);
   background: rgba(77, 183, 244, 0.2);
