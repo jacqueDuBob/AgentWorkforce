@@ -26,7 +26,7 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
     const controller = new AbortController();
     fetch("/api/refinement", {
       method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticket, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName }),
+      body: JSON.stringify({ ticket: { ...ticket, acceptanceCriteria: ticket.acceptanceCriteria.map((item) => item.text).join("\n") }, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName }),
     }).then(async (response) => {
       const data = await response.json() as RefinementProposal & { error?: string };
       if (!response.ok) throw new Error(data.error || "Could not start the refinement agent.");
@@ -48,7 +48,7 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
     setSubmitting(true); setError("");
     try {
       const completedAnswers = proposal.questions.map((question) => ({ questionId: question.id, question: question.question, answer: answers[question.id].trim() }));
-      const response = await fetch("/api/refinement", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rewrite", ticket, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName, answers: completedAnswers }) });
+      const response = await fetch("/api/refinement", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rewrite", ticket: { ...ticket, acceptanceCriteria: ticket.acceptanceCriteria.map((item) => item.text).join("\n") }, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName, answers: completedAnswers }) });
       const rewrite = await response.json() as RefinedTicketContent & { error?: string };
       if (!response.ok) throw new Error(rewrite.error || "The refinement agent could not rewrite the ticket.");
       await onSubmit(repositoryId, proposal, completedAnswers, rewrite);

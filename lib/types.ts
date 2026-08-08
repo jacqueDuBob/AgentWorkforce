@@ -8,6 +8,8 @@ export type Priority = "Low" | "Medium" | "High" | "Urgent";
 
 export interface GitHubRepository { id: string; owner: string; name: string; defaultBranch: string; }
 
+export interface AcceptanceCriterion { id: string; text: string; completed: boolean; }
+
 export interface Ticket {
   id: string;
   title: string;
@@ -15,7 +17,7 @@ export interface Ticket {
   priority: Priority;
   tags: string[];
   assignee: string;
-  acceptanceCriteria: string;
+  acceptanceCriteria: AcceptanceCriterion[];
   repositoryId: string;
   baseBranch: string;
   status: ColumnId;

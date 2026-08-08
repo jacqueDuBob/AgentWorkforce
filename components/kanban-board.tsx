@@ -74,7 +74,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     const agent = agents.find((item) => item.column === "In Refinement");
     if (!agent) throw new Error("The refinement agent is not configured.");
     if (repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(repositoryId)) throw new Error(`${agent.name} is not allowed to use the selected repository.`);
-    const updated = { ...refining, ...rewrite, tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
+    const updated = { ...refining, ...rewrite, acceptanceCriteria: rewrite.acceptanceCriteria.split(/\r?\n/).map((text) => text.trim()).filter(Boolean).map((text) => ({ id: crypto.randomUUID(), text, completed: false })), tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
     await persistTickets(tickets.map((ticket) => ticket.id === updated.id ? updated : ticket));
     await queueAgentRun(updated.id, agent, "manual", { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers, rewrittenTicket: rewrite } });
     setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
