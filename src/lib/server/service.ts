@@ -41,10 +41,6 @@ export function updatePolicyMode(policyId: string, input: unknown) {
   return Promise.resolve(getStore().setPolicyMode(policyId, parsed.mode));
 }
 
-export function resetDemoData() {
-  return Promise.resolve(getStore().reset());
-}
-
 export async function classifyCard(cardId: string) {
   const store = getStore();
   const snapshot = await store.getSnapshot();
@@ -55,7 +51,6 @@ export async function classifyCard(cardId: string) {
 
   const env = getEnv();
   const model = getModelProvider({
-    demoMode: env.demoMode,
     openAiApiKey: env.OPENAI_API_KEY,
     classifierModel: env.OPENAI_CLASSIFIER_MODEL,
     timeoutMs: env.OPENAI_TIMEOUT_MS,
@@ -96,7 +91,6 @@ export async function mergeCard(cardId: string) {
 
   const env = getEnv();
   const github = getGitHubProvider({
-    demoMode: env.demoMode,
     githubAppId: env.GITHUB_APP_ID,
     githubAppPrivateKey: env.GITHUB_APP_PRIVATE_KEY,
     githubInstallationId: env.GITHUB_INSTALLATION_ID,

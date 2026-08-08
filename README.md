@@ -8,8 +8,7 @@ This repository implements the first production-style vertical slice with:
 - Review loop controls (3 automatic loops + one manual-approval credit per extra attempt)
 - Findings, approvals, run history, artifacts, and cost tracking
 - Server-side GitHub integration foundations and webhook signature verification
-- OpenAI Responses adapter with deterministic demo provider
-- Demo mode for local no-cost, no-merge execution
+- OpenAI Responses adapter
 
 ## Quick Start
 
@@ -23,7 +22,7 @@ npm install
 cp .env.example .env.local
 ```
 
-3. Run in demo mode:
+3. Configure environment variables and run the app:
 ```bash
 npm run dev
 ```
@@ -63,9 +62,9 @@ npm run build
 ## Project Structure
 
 - `src/lib/domain`: Workflow state machine and invariants
-- `src/lib/store`: Demo persistence and seed state
-- `src/lib/providers/github`: Demo + GitHub App provider + webhook verification
-- `src/lib/providers/models`: Demo + OpenAI Responses provider
+- `src/lib/store`: Supabase persistence and seed state
+- `src/lib/providers/github`: GitHub App provider + webhook verification
+- `src/lib/providers/models`: OpenAI Responses provider
 - `src/app/api`: Board/cards/policies/approval/webhook routes
 - `src/components/agentboard.tsx`: Command-center UI
 - `supabase/migrations`: SQL schema
@@ -78,7 +77,7 @@ Use the migration and seed SQL files:
 - `supabase/migrations/202608080001_initial_agentboard.sql`
 - `supabase/seed/seed.sql`
 
-For the MVP persistence path, set `AGENTBOARD_DEMO_MODE=false` and provide your Supabase URL plus service role key. The app will use the normalized Supabase tables as the source of truth while keeping the in-memory demo store available for local no-cost runs.
+Set `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, and the GitHub App credentials in your deployment environment. The app uses the normalized Supabase tables as the source of truth.
 
 ## GitHub App Setup (least privilege)
 
@@ -108,14 +107,11 @@ Configurable:
 
 ## Known Limitations
 
-- Demo mode still uses in-memory state and resets on process restart.
-- Supabase MVP persistence now uses the normalized tables directly; the in-memory demo store still resets on process restart.
 - GitHub worker callback ingestion is scaffolded via webhook verification endpoint; full callback mapping is a next milestone.
 - Cost estimation uses simplified token pricing heuristics.
 
 ## Next Milestones
 
-1. Replace demo store with transactional Supabase-backed repository layer.
-2. Add pgmq-backed durable queue dispatcher for long-running workflow jobs.
-3. Complete GitHub callback/event projection into run and operation records.
-4. Add richer policy condition editor and repository-specific specialization governance.
+1. Add pgmq-backed durable queue dispatcher for long-running workflow jobs.
+2. Complete GitHub callback/event projection into run and operation records.
+3. Add richer policy condition editor and repository-specific specialization governance.
