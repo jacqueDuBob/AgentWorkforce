@@ -18,6 +18,8 @@ The app requires a Supabase project for authentication and board storage:
 5. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
 6. Restart the development server and create your first account.
 
+To use the interactive refinement agent, also set `OPENAI_API_KEY` in `.env.local`. You can optionally set `OPENAI_REFINEMENT_MODEL`; it defaults to `gpt-5.6-luna`.
+
 ## Deploy to Vercel
 
 Import the repository in Vercel and add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the project environment variables.

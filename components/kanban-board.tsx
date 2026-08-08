@@ -14,6 +14,8 @@ import { loadColumnAgents, queueAgentRun, saveColumnAgent } from "@/lib/agent-st
 import type { ColumnAgent } from "@/lib/agent-types";
 import { RepositorySetup } from "./repository-setup";
 import { addRepository, deleteRepository, loadRepositories } from "@/lib/repository-store";
+import { RefinementDialog } from "./refinement-dialog";
+import type { RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 
 const priorityClass = (priority: Ticket["priority"]) => `priority ${priority.toLowerCase()}`;
 
@@ -51,7 +53,7 @@ function DeleteDialog({ ticket, onCancel, onConfirm }: { ticket?: Ticket; onCanc
 
 export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]); const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
+  const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -62,7 +64,18 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const openNew = (status: ColumnId = "New") => { setEditing(undefined); setFormStatus(status); setFormOpen(true); };
   const save = (draft: TicketDraft) => { const now = new Date().toISOString(); const next = editing ? tickets.map((t) => t.id === editing.id ? { ...t, ...draft, updatedAt: now } : t) : [...tickets, { ...draft, id: crypto.randomUUID(), position: tickets.filter((t) => t.status === draft.status).length, createdAt: now, updatedAt: now }]; setFormOpen(false); void saveAll(next); };
   const confirmDelete = async () => { if (!deleting) return; const ticket = deleting; const previous = tickets; const next = tickets.filter((item) => item.id !== ticket.id); setDeleting(undefined); setTickets(next); try { await removeTicket(ticket.id); } catch { setTickets(previous); setError("The item could not be deleted."); } };
-  const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (!ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { await queueAgentRun(ticket.id, agent, trigger); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch { setError("The agent could not be started. Run the latest database migration and try again."); } };
+  const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (ticket.status === "In Refinement" && trigger === "manual") { setRefining(ticket); return; } if (!ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { await queueAgentRun(ticket.id, agent, trigger); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch { setError("The agent could not be started. Run the latest database migration and try again."); } };
+  const submitRefinement = async (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[]) => {
+    if (!refining) return;
+    const agent = agents.find((item) => item.column === "In Refinement");
+    if (!agent) throw new Error("The refinement agent is not configured.");
+    if (repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(repositoryId)) throw new Error(`${agent.name} is not allowed to use the selected repository.`);
+    const updated = { ...refining, repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
+    await persistTickets(tickets.map((ticket) => ticket.id === updated.id ? updated : ticket));
+    await queueAgentRun(updated.id, agent, "manual", { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers } });
+    setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
+    setRefining(undefined); setNotice(`${agent.name} queued for “${updated.title}” with your refinement answers.`);
+  };
   const dragStart = (event: DragStartEvent) => setActive(tickets.find((t) => t.id === event.active.id));
   const dragEnd = async (event: DragEndEvent) => {
     setActive(undefined);
@@ -111,5 +124,6 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     <DeleteDialog ticket={deleting} onCancel={() => setDeleting(undefined)} onConfirm={() => void confirmDelete()}/>
     {setupOpen && <ColumnSetup open agents={agents} repositories={repositories} onClose={() => setSetupOpen(false)} onSave={updateAgent}/>}
     {repositoriesOpen && <RepositorySetup repositories={repositories} onClose={() => setRepositoriesOpen(false)} onAdd={createRepository} onDelete={removeRepository}/>}
+    {refining && agents.find((agent) => agent.column === "In Refinement") && <RefinementDialog key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "In Refinement")!} repositories={repositories.filter((repository) => { const agent = agents.find((item) => item.column === "In Refinement"); return !agent || agent.repositoryAccess === "all" || agent.allowedRepositoryIds.includes(repository.id); })} onClose={() => setRefining(undefined)} onSubmit={submitRefinement}/>}
   </main>;
 }

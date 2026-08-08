@@ -7,8 +7,8 @@ import type { RefinementAnswer, RefinementProposal } from "@/lib/refinement-type
 import type { GitHubRepository, Ticket } from "@/lib/types";
 
 export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmit }: {
-  ticket?: Ticket;
-  agent?: ColumnAgent;
+  ticket: Ticket;
+  agent: ColumnAgent;
   repositories: GitHubRepository[];
   onClose: () => void;
   onSubmit: (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[]) => Promise<void>;
@@ -16,14 +16,12 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
   const [proposal, setProposal] = useState<RefinementProposal>();
   const [repositoryId, setRepositoryId] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!ticket || !agent) return;
     const controller = new AbortController();
-    setLoading(true); setError(""); setProposal(undefined); setAnswers({});
     fetch("/api/refinement", {
       method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticket, repositories, instructions: agent.instructions }),
@@ -37,7 +35,6 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
     return () => controller.abort();
   }, [ticket, agent, repositories]);
 
-  if (!ticket || !agent) return null;
   const complete = proposal?.questions.every((question) => answers[question.id]?.trim());
   const submit = async () => {
     if (!proposal || !complete) return;
