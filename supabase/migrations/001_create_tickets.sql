@@ -15,7 +15,7 @@ create table if not exists public.tickets (
 
 alter table public.tickets enable row level security;
 
--- Enable Anonymous Sign-Ins in Supabase Auth. Users get an isolated identity without a login screen.
+-- Email/password users can only access records owned by their authenticated identity.
 create policy "Users can read their own tickets" on public.tickets for select to authenticated using (auth.uid() = user_id);
 create policy "Users can create their own tickets" on public.tickets for insert to authenticated with check (auth.uid() = user_id);
 create policy "Users can update their own tickets" on public.tickets for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);

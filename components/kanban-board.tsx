@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CircleUserRound, Ellipsis, GripVertical, LayoutGrid, Plus, Search, Trash2, X } from "lucide-react";
+import { CircleUserRound, Ellipsis, GripVertical, LayoutGrid, LogOut, Plus, Search, Trash2, X } from "lucide-react";
 import { COLUMNS, type ColumnId, type Ticket, type TicketDraft } from "@/lib/types";
 import { loadTickets, persistTickets, removeTicket } from "@/lib/ticket-store";
 import { TicketForm } from "./ticket-form";
@@ -44,7 +44,7 @@ function DeleteDialog({ ticket, onCancel, onConfirm }: { ticket?: Ticket; onCanc
   return <div className="modal-backdrop" onMouseDown={onCancel} role="presentation"><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" onMouseDown={(event) => event.stopPropagation()}><span className="delete-icon"><Trash2 size={20}/></span><h2 id="delete-title">Delete this item?</h2><p>“{ticket.title}” will be permanently removed from the board.</p><div className="form-actions"><button className="button secondary" onClick={onCancel}>Cancel</button><button className="button danger-button" onClick={onConfirm}>Delete item</button></div></section></div>;
 }
 
-export function KanbanBoard() {
+export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]); const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -86,7 +86,7 @@ export function KanbanBoard() {
   };
 
   return <main>
-    <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>{process.env.NEXT_PUBLIC_SUPABASE_URL ? "Synced" : "Local workspace"}</span><button className="avatar" aria-label="User menu">JD</button></div></nav>
+    <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><button className="signout-button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={17}/></button></div></nav>
     <div className="workspace-header"><div><p className="eyebrow">Workspace / Product</p><h1>Delivery board</h1><p>Move every idea from first thought to live.</p></div><button className="button primary create" onClick={() => openNew()}><Plus size={18}/> Create item</button></div>
     <div className="toolbar"><label className="search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search work items…" aria-label="Search work items"/>{query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15}/></button>}</label><span className="result-count">{query ? "Clear search to move items" : `${visible.length} ${visible.length === 1 ? "item" : "items"}`}</span></div>
     {error && <div className="error-banner">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}

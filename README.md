@@ -9,15 +9,15 @@ npm install
 npm run dev
 ```
 
-Without environment variables, the app saves items in the browser. To use Supabase:
+The app requires a Supabase project for authentication and board storage:
 
 1. Create a Supabase project and run `supabase/migrations/001_create_tickets.sql` in the SQL editor.
-2. In Supabase, open Authentication → Providers → Anonymous Sign-Ins and enable it.
-3. Copy `.env.example` to `.env.local` and add the project URL and anon key.
-4. Restart the development server.
+2. Copy `.env.example` to `.env.local` and add the project URL and publishable/anon key.
+3. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+4. Restart the development server and create your first account.
 
 ## Deploy to Vercel
 
 Import the repository in Vercel and add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the project environment variables.
 
-The app creates an invisible anonymous session, so there is no login screen while row-level security still isolates each browser's tickets. Clearing browser data creates a new identity; add a permanent login method later if users need cross-device access or account recovery.
+Flowboard supports email/password sign-up, sign-in, password reset, persistent sessions, and sign-out. Row-level security isolates every user's tickets using `auth.uid()`.

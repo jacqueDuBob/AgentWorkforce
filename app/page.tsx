@@ -1,5 +1,5 @@
-import { KanbanBoard } from "@/components/kanban-board";
+import { AuthGate } from "@/components/auth-gate";
 
 export default function Home() {
-  return <KanbanBoard />;
+  return <AuthGate />;
 }

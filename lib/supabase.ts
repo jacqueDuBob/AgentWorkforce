@@ -10,11 +10,9 @@ if (process.env.NODE_ENV === "development" && (!url || !key)) {
 }
 
 export async function ensureSupabaseSession() {
-  if (!supabase) return null;
+  if (!supabase) throw new Error("Supabase is not configured.");
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error) throw error;
-  if (session) return session;
-  const { data, error: signInError } = await supabase.auth.signInAnonymously();
-  if (signInError) throw signInError;
-  return data.session;
+  if (!session || session.user.is_anonymous) throw new Error("You must sign in to access the board.");
+  return session;
 }
