@@ -57,11 +57,15 @@ const schema = {
 
 const rewriteSchema = {
   type: "object", additionalProperties: false,
-  required: ["title", "description", "acceptanceCriteria", "priority", "tags"],
+  required: ["title", "description", "acceptanceCriteria", "priority", "tags", "epicRecommendation"],
   properties: {
     title: { type: "string" }, description: { type: "string" }, acceptanceCriteria: { type: "string" },
     priority: { type: "string", enum: ["Low", "Medium", "High", "Urgent"] },
     tags: { type: "array", maxItems: 3, items: { type: "string" } },
+    epicRecommendation: {
+      type: "object", additionalProperties: false, required: ["recommended", "reason"],
+      properties: { recommended: { type: "boolean" }, reason: { type: "string" } },
+    },
   },
 };
 
@@ -88,7 +92,7 @@ export async function POST(request: Request) {
   const context = `Workspace master instructions:\n${body.masterInstructions || "No workspace instructions configured."}\n\nAgent instructions:\n${body.instructions}\n\nRepositories:\n${repositoryList}\n\nTicket:\n${JSON.stringify(body.ticket, null, 2)}`;
   const rewriting = body.action === "rewrite";
   const prompt = rewriting
-    ? `You are a product refinement agent. Rewrite the ticket using the user's answers. Preserve valid existing detail, remove ambiguity resolved by the answers, and make the description and acceptance criteria implementation-ready. Acceptance criteria should be concise, testable lines. Do not invent requirements. Return no more than three short tags.\n\nAnswers:\n${JSON.stringify(body.answers, null, 2)}\n\n${context}`
+    ? `You are a product refinement agent. Rewrite the ticket using the user's answers. Preserve valid existing detail, remove ambiguity resolved by the answers, and make the description and acceptance criteria implementation-ready. Acceptance criteria should be concise, testable lines. Do not invent requirements. Return no more than three short tags. After considering the answers, recommend an Epic only when the outcome requires multiple independently deliverable child tickets, crosses a repository or application-domain boundary, or cannot safely be delivered in one implementation and review cycle. Do not recommend an Epic merely because the work is difficult, uncertain, or has several implementation steps. Give a concise evidence-based reason; when not recommending, briefly explain why the work remains cohesive.\n\nAnswers:\n${JSON.stringify(body.answers, null, 2)}\n\n${context}`
     : `You are a product refinement agent. Classify which connected repository best fits the ticket, using only an exact repository id from the list. If none fit or none exist, return an empty repositoryId. Treat the selected repository metadata as context. Then ask 2-5 concise questions that resolve the most important ambiguities. Each question must have exactly three short, realistic, mutually exclusive suggested answers. Do not include an \"Other\" suggestion because the UI supplies a free-text answer.\n\n${context}`;
 
   const response = await fetch("https://api.openai.com/v1/responses", {

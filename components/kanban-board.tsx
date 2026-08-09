@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GitBranch, GripVertical, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Sparkles, Trash2, Zap, X } from "lucide-react";
+import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GitBranch, GripVertical, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, Zap, X } from "lucide-react";
 import { COLUMNS, type ColumnId, type GitHubRepository, type Ticket, type TicketDraft } from "@/lib/types";
 import { loadTickets, persistTicket, persistTickets, removeTicket } from "@/lib/ticket-store";
 import { TicketForm } from "./ticket-form";
@@ -25,7 +25,7 @@ import type { EpicRecommendation, ProposedChild } from "@/lib/types";
 
 const priorityClass = (priority: Ticket["priority"]) => `priority ${priority.toLowerCase()}`;
 
-function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, onDelete, onRun, onRecommendEpic, onForceBreakout }: { ticket: Ticket; agent?: ColumnAgent; overlay?: boolean; dragDisabled?: boolean; onEdit?: () => void; onDelete?: () => void; onRun?: () => void; onRecommendEpic?: () => void; onForceBreakout?: () => void }) {
+function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, onDelete, onRun, onForceBreakout }: { ticket: Ticket; agent?: ColumnAgent; overlay?: boolean; dragDisabled?: boolean; onEdit?: () => void; onDelete?: () => void; onRun?: () => void; onForceBreakout?: () => void }) {
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const sortable = useSortable({ id: ticket.id, data: { type: "ticket", ticket }, disabled: overlay || dragDisabled });
@@ -37,18 +37,18 @@ function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, on
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [menu]);
   return <article ref={sortable.setNodeRef} style={style} className={`ticket-card ${overlay ? "dragging" : ""}`} {...sortable.attributes}>
-    <div className="card-top"><span className={priorityClass(ticket.priority)}><i/>{ticket.priority}</span>{ticket.itemType === "Epic" && <span className="epic-badge"><GitBranch size={11}/> Epic</span>}{ticket.isDraft && <span className="draft-badge">Draft</span>}<div className="card-tools" ref={menuRef}><button className="grip" {...sortable.listeners} disabled={dragDisabled} title={dragDisabled ? "Clear search to move items" : undefined} aria-label={`Move ${ticket.title}`}><GripVertical size={16}/></button><button className="more" onClick={() => setMenu(!menu)} aria-label="Ticket actions" aria-expanded={menu}><Ellipsis size={18}/></button>{menu && <div className="card-menu"><button onClick={() => { setMenu(false); onEdit?.(); }}>Edit</button>{ticket.itemType !== "Epic" && <button onClick={() => { setMenu(false); onRecommendEpic?.(); }}><Sparkles size={14}/> Recommend as Epic</button>}<button onClick={() => { setMenu(false); onForceBreakout?.(); }}><Zap size={14}/> Force refinement breakout</button><button className="danger" onClick={() => { setMenu(false); onDelete?.(); }}><Trash2 size={14}/> Delete</button></div>}</div></div>
+    <div className="card-top"><span className={priorityClass(ticket.priority)}><i/>{ticket.priority}</span>{ticket.itemType === "Epic" && <span className="epic-badge"><GitBranch size={11}/> Epic</span>}{ticket.isDraft && <span className="draft-badge">Draft</span>}<div className="card-tools" ref={menuRef}><button className="grip" {...sortable.listeners} disabled={dragDisabled} title={dragDisabled ? "Clear search to move items" : undefined} aria-label={`Move ${ticket.title}`}><GripVertical size={16}/></button><button className="more" onClick={() => setMenu(!menu)} aria-label="Ticket actions" aria-expanded={menu}><Ellipsis size={18}/></button>{menu && <div className="card-menu"><button onClick={() => { setMenu(false); onEdit?.(); }}>Edit</button><button onClick={() => { setMenu(false); onForceBreakout?.(); }}><Zap size={14}/> Force refinement breakout</button><button className="danger" onClick={() => { setMenu(false); onDelete?.(); }}><Trash2 size={14}/> Delete</button></div>}</div></div>
     <h3 onClick={onEdit}>{ticket.title}</h3>{ticket.description && <p>{ticket.description}</p>}
     {ticket.tags.length > 0 && <div className="tag-list compact">{ticket.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>}
     <div className="card-footer"><span className="ticket-id">FW-{ticket.id.replaceAll("-", "").slice(0, 8).toUpperCase()}</span><div className="card-footer-actions">{agent?.enabled && agent.startMode === "manual" && <button className="run-agent" onClick={onRun} title={`Run ${agent.name}`} aria-label={`Run ${agent.name}`}><Play size={11}/> Run agent</button>}{ticket.assignee ? <span className="assignee" title={ticket.assignee}>{ticket.assignee.slice(0, 2).toUpperCase()}</span> : <CircleUserRound size={21} className="unassigned"/>}</div></div>
   </article>;
 }
 
-function Column({ name, tickets, agent, dragDisabled, onAdd, onEdit, onDelete, onRun, onRecommendEpic, onForceBreakout }: { name: ColumnId; tickets: Ticket[]; agent?: ColumnAgent; dragDisabled: boolean; onAdd: () => void; onEdit: (t: Ticket) => void; onDelete: (t: Ticket) => void; onRun: (t: Ticket) => void; onRecommendEpic: (t: Ticket) => void; onForceBreakout: (t: Ticket) => void }) {
+function Column({ name, tickets, agent, dragDisabled, onAdd, onEdit, onDelete, onRun, onForceBreakout }: { name: ColumnId; tickets: Ticket[]; agent?: ColumnAgent; dragDisabled: boolean; onAdd: () => void; onEdit: (t: Ticket) => void; onDelete: (t: Ticket) => void; onRun: (t: Ticket) => void; onForceBreakout: (t: Ticket) => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: name, data: { type: "column", status: name } });
   return <section className={`board-column ${isOver ? "over" : ""}`} ref={setNodeRef}>
     <header><div><span className="status-dot"/><h2>{name}</h2><span className="count">{tickets.length}</span>{agent?.enabled && <span className={`agent-mode ${agent.startMode}`} title={`${agent.name} · ${agent.startMode}`}><Bot size={11}/></span>}</div><button onClick={onAdd} aria-label={`Add item to ${name}`}><Plus size={18}/></button></header>
-    <SortableContext items={tickets.map((ticket) => ticket.id)} strategy={verticalListSortingStrategy}><div className="column-cards">{tickets.map((ticket) => <Card key={ticket.id} ticket={ticket} agent={agent} dragDisabled={dragDisabled} onEdit={() => onEdit(ticket)} onDelete={() => onDelete(ticket)} onRun={() => onRun(ticket)} onRecommendEpic={() => onRecommendEpic(ticket)} onForceBreakout={() => onForceBreakout(ticket)}/>)}{tickets.length === 0 && <button className="empty-column" onClick={onAdd}><Plus size={16}/> Add item</button>}</div></SortableContext>
+    <SortableContext items={tickets.map((ticket) => ticket.id)} strategy={verticalListSortingStrategy}><div className="column-cards">{tickets.map((ticket) => <Card key={ticket.id} ticket={ticket} agent={agent} dragDisabled={dragDisabled} onEdit={() => onEdit(ticket)} onDelete={() => onDelete(ticket)} onRun={() => onRun(ticket)} onForceBreakout={() => onForceBreakout(ticket)}/>)}{tickets.length === 0 && <button className="empty-column" onClick={onAdd}><Plus size={16}/> Add item</button>}</div></SortableContext>
   </section>;
 }
 
@@ -79,11 +79,17 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     const agent = agents.find((item) => item.column === "In Refinement");
     if (!agent) throw new Error("The refinement agent is not configured.");
     if (repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(repositoryId)) throw new Error(`${agent.name} is not allowed to use the selected repository.`);
-    const updated = { ...refining, ...rewrite, acceptanceCriteria: rewrite.acceptanceCriteria.split(/\r?\n/).map((text) => text.trim()).filter(Boolean).map((text) => ({ id: crypto.randomUUID(), text, completed: false })), tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
+    const { epicRecommendation, ...ticketRewrite } = rewrite;
+    const updated = { ...refining, ...ticketRewrite, acceptanceCriteria: rewrite.acceptanceCriteria.split(/\r?\n/).map((text) => text.trim()).filter(Boolean).map((text) => ({ id: crypto.randomUUID(), text, completed: false })), tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
     await persistTickets(tickets.map((ticket) => ticket.id === updated.id ? updated : ticket));
     await queueAgentRun(updated.id, agent, "manual", { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers, rewrittenTicket: rewrite } });
     setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
-    setRefining(undefined); setNotice(`“${updated.title}” was rewritten and ${agent.name} was queued.`);
+    if (epicRecommendation.recommended && updated.itemType !== "Epic") {
+      const recommendation = await recommendEpic(updated.id, epicRecommendation.reason, agent.name);
+      setBreakoutOutcome(undefined); setBreakoutError(""); setEpicCandidate({ ticket: updated, recommendation });
+      setNotice(`“${updated.title}” was refined and recommended as an Epic.`);
+    } else setNotice(`“${updated.title}” was rewritten and ${agent.name} was queued.`);
+    setRefining(undefined);
   };
   const dragStart = (event: DragStartEvent) => setActive(tickets.find((t) => t.id === event.active.id));
   const dragEnd = async (event: DragEndEvent) => {
@@ -122,13 +128,6 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const createRepository = async (repository: Omit<GitHubRepository, "id">) => { const created = await addRepository(repository); setRepositories((current) => [...current, created]); };
   const removeRepository = async (id: string) => { await deleteRepository(id); setRepositories((current) => current.filter((item) => item.id !== id)); };
   const updateMasterInstructions = async (instructions: string) => { await saveMasterInstructions(instructions); setMasterInstructions(instructions.trim()); };
-  const openEpicRecommendation = async (ticket: Ticket) => {
-    const recommendingAgent = agents.find((item) => item.column === ticket.status);
-    try {
-      const recommendation = await recommendEpic(ticket.id, "This item appears to span multiple cohesive features or a distinct repository/app domain and would benefit from a structured breakout.", recommendingAgent?.name ?? "Workspace agent");
-      setBreakoutOutcome(undefined); setBreakoutError(""); setEpicCandidate({ ticket, recommendation });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "The Epic recommendation could not be saved."); }
-  };
   const runBreakout = async (ticket: Ticket, force = false) => {
     setBreakoutRunning(true); setBreakoutError("");
     if (force) setNotice(`Starting refinement breakout for “${ticket.title}”…`);
@@ -170,7 +169,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     <div className="toolbar"><label className="search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search work items…" aria-label="Search work items"/>{query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15}/></button>}</label><span className="result-count">{query ? "Clear search to move items" : `${visible.length} ${visible.length === 1 ? "item" : "items"}`}</span></div>
     {error && <div className="error-banner">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}
     {notice && <div className="notice-banner"><Bot size={15}/><span>{notice}</span><button onClick={() => setNotice("")}><X size={15}/></button></div>}
-    {loading ? <div className="loading-board">Loading your workspace…</div> : <DndContext sensors={sensors} onDragStart={dragStart} onDragEnd={(event) => void dragEnd(event)} onDragCancel={() => setActive(undefined)}><div className="board">{COLUMNS.map((column) => <Column key={column} name={column} tickets={visible.filter((t) => t.status === column).sort((a,b) => a.position-b.position)} agent={agents.find((agent) => agent.column === column)} dragDisabled={Boolean(query)} onAdd={() => openNew(column)} onEdit={(ticket) => { setEditing(ticket); setFormStatus(ticket.status); setFormOpen(true); }} onDelete={setDeleting} onRun={(ticket) => void runAgent(ticket)} onRecommendEpic={(ticket) => void openEpicRecommendation(ticket)} onForceBreakout={(ticket) => void runBreakout(ticket, true)}/>)}</div><DragOverlay>{active ? <Card ticket={active} overlay/> : null}</DragOverlay></DndContext>}
+    {loading ? <div className="loading-board">Loading your workspace…</div> : <DndContext sensors={sensors} onDragStart={dragStart} onDragEnd={(event) => void dragEnd(event)} onDragCancel={() => setActive(undefined)}><div className="board">{COLUMNS.map((column) => <Column key={column} name={column} tickets={visible.filter((t) => t.status === column).sort((a,b) => a.position-b.position)} agent={agents.find((agent) => agent.column === column)} dragDisabled={Boolean(query)} onAdd={() => openNew(column)} onEdit={(ticket) => { setEditing(ticket); setFormStatus(ticket.status); setFormOpen(true); }} onDelete={setDeleting} onRun={(ticket) => void runAgent(ticket)} onForceBreakout={(ticket) => void runBreakout(ticket, true)}/>)}</div><DragOverlay>{active ? <Card ticket={active} overlay/> : null}</DragOverlay></DndContext>}
     <TicketForm open={formOpen} ticket={editing} repositories={repositories} initialStatus={formStatus} onClose={() => setFormOpen(false)} onSave={save}/>
     <DeleteDialog ticket={deleting} onCancel={() => setDeleting(undefined)} onConfirm={() => void confirmDelete()}/>
     {setupOpen && <ColumnSetup open agents={agents} repositories={repositories} onClose={() => setSetupOpen(false)} onSave={updateAgent}/>}

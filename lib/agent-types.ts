@@ -32,7 +32,7 @@ export interface AgentRun {
 
 export const DEFAULT_AGENT_INSTRUCTIONS: Record<ColumnId, string> = {
   "New": "Review the request, identify its intent, and flag missing information.",
-  "In Refinement": "Classify the best repository from the ticket content and ask focused questions that resolve missing requirements before implementation.",
+  "In Refinement": "Classify the best repository, ask focused questions, and after the answers decide whether the refined work requires multiple independently deliverable tickets and should become an Epic.",
   "Ready": "Confirm the work is actionable and produce a concise implementation plan.",
   "In Work": "Implement the approved change in the configured GitHub repository on a new branch.",
   "Work Completed": "Review the implementation for completeness and prepare a pull request summary.",
