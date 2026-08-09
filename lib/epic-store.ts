@@ -44,6 +44,24 @@ export async function confirmEpicRecommendation(ticket: Ticket, recommendation: 
   return { epic: { ...ticket, itemType: "Epic", updatedAt: new Date().toISOString() }, session };
 }
 
+export async function startEpicBreakout(ticket: Ticket, requesterEmail: string, agent: { name: string; modelName: string }, domain: string): Promise<{ epic: Ticket; session: BreakoutSession }> {
+  if (ticket.itemType !== "Epic") {
+    const recommendation = await recommendEpic(ticket.id, "The requesting user forced this item into refinement breakout.", "Requesting user");
+    return confirmEpicRecommendation(ticket, recommendation, requesterEmail, agent, domain);
+  }
+  if (supabase) {
+    await ensureSupabaseSession();
+    const { data, error } = await supabase.from("epic_breakout_sessions").insert({ epic_id: ticket.id, requester_email: requesterEmail, agent_name: agent.name, model_name: agent.modelName, domain }).select("*").single();
+    if (error) throw error;
+    return { epic: ticket, session: { id: data.id, epicId: ticket.id, requesterEmail, agentName: agent.name, modelName: agent.modelName, domain, status: "active", failedChildren: [], createdAt: data.created_at, completedAt: "" } };
+  }
+  const sessions = read<BreakoutSession>(SESSIONS_KEY);
+  if (sessions.some((item) => item.epicId === ticket.id && item.status === "active")) throw new Error("This Epic already has an active breakout session.");
+  const session: BreakoutSession = { id: crypto.randomUUID(), epicId: ticket.id, requesterEmail, agentName: agent.name, modelName: agent.modelName, domain, status: "active", failedChildren: [], createdAt: new Date().toISOString(), completedAt: "" };
+  write(SESSIONS_KEY, [...sessions, session]);
+  return { epic: ticket, session };
+}
+
 export async function completeBreakoutSession(session: BreakoutSession, failedChildren: BreakoutSession["failedChildren"]) {
   if (supabase) {
     await ensureSupabaseSession();
