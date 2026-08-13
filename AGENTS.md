@@ -1,40 +1,140 @@
-# Agent Instructions
+# Flowboard Agent Instructions
 
-## Project
+These instructions apply to the entire repository. Keep changes narrow, preserve
+unrelated user work, and prefer repository evidence over assumptions.
 
-This repository contains Flowboard, a Next.js and Supabase Kanban application that coordinates repository-aware Codex agents and local workers.
+## Product and Architecture
 
-## Working Principles
+Flowboard is a Next.js App Router application backed by Supabase. It has three
+execution and trust boundaries:
 
-- Understand the relevant code path before making changes.
-- Preserve existing behavior unless the task explicitly requires changing it.
-- Keep changes focused on the requested outcome and avoid unrelated refactors.
-- Treat existing user changes as intentional. Do not overwrite or revert them.
-- Never expose secrets, service-role keys, worker tokens, or local credentials.
-- State important assumptions when repository evidence does not resolve them.
+- Browser UI and stores (`app/`, `components/`, `lib/*-store.ts`) use the
+  publishable Supabase client and rely on authentication plus row-level security.
+- Route handlers (`app/api/`) may use the server-only service-role client, but must
+  authenticate the caller and enforce ownership explicitly because that client
+  bypasses RLS.
+- The local worker (`scripts/codex-worker.mjs`) polls authenticated worker routes,
+  maps repository identifiers to approved local checkouts, and runs Codex inside
+  the configured sandbox.
 
-## Project Conventions
+The ticket store also supports a no-Supabase development mode using browser local
+storage. Agent execution, authentication, repositories, and other collaborative
+features require Supabase. Preserve this distinction unless the task changes it.
 
-- Use TypeScript for application code and follow the existing Next.js patterns.
-- Reuse existing components, stores, and types before introducing new abstractions.
-- Keep server-only Supabase access and secrets out of client-side code.
-- Add database changes as new, ordered files under `supabase/migrations/`; do not rewrite migrations that may already have been applied.
-- Keep repository-aware worker behavior compatible with the sandbox and authorization boundaries described in `README.md`.
+## Before Changing Code
+
+- Read the complete path affected by the change: component, store, shared type,
+  route handler, worker contract, and migration where applicable.
+- Check `git status` and relevant diffs before editing. Existing modifications are
+  user work; do not discard, rewrite, or "clean up" unrelated changes.
+- Search for all readers and writers before changing a persisted field, run status,
+  prompt variable, API payload, or shared type.
+- State assumptions when code, migrations, and documentation do not settle a
+  decision. Do not silently invent compatibility requirements.
+
+## Application Conventions
+
+- Use strict TypeScript for application code and the existing `@/` import alias.
+  The worker remains an ES module (`.mjs`) unless a deliberate migration changes it.
+- Follow App Router boundaries. Add `"use client"` only where browser APIs, hooks,
+  or interactive state require it; keep privileged modules server-only.
+- Reuse existing components, stores, prompt helpers, and domain types before adding
+  another abstraction or a parallel data-access path.
+- Keep database row-to-domain and domain-to-row mappings explicit. When a persisted
+  field changes, update both directions, validation/default handling, and every
+  affected API/worker payload.
+- Preserve stable IDs, ordering, and immutable state updates in Kanban interactions.
+  Do not make optimistic UI updates that cannot be reconciled after persistence
+  fails.
+- Keep user-facing errors actionable while avoiding secrets, raw credentials, or
+  unnecessary backend details.
+
+## Authentication and Data Safety
+
+- Never expose `SUPABASE_SERVICE_ROLE_KEY`, worker tokens, local paths, Codex
+  credentials, or `.env*` contents. Only the Supabase URL and anon/publishable key
+  may use the `NEXT_PUBLIC_` prefix.
+- Import privileged helpers from server-only modules. Do not pull
+  `lib/supabase-admin.ts`, `lib/server-auth.ts`, or `lib/worker-auth.ts` into a
+  client component or browser bundle.
+- Every service-role route must authenticate before data access. Scope every query
+  and mutation to the authenticated user's `user_id` or to another ownership link
+  proven in the same request; never trust a body, URL, repository, ticket, run, or
+  worker ID by itself.
+- Keep browser operations compatible with RLS. A client-side filter is not an
+  authorization control; policy changes belong in a migration.
+- Worker tokens are bearer credentials: store only their hashes, return plaintext
+  only at creation, honor revocation, and require the authenticated worker to own
+  any claimed or completed run.
+- Validate untrusted JSON and return appropriate 4xx responses for invalid input or
+  authorization failures. Reserve 5xx responses for server/integration failures.
+
+## Supabase Migrations
+
+- Add schema or policy changes as a new, sequentially numbered file under
+  `supabase/migrations/`. Never edit, reorder, or reuse an existing migration number
+  that may have been applied.
+- Make migrations safe for the repository's supported upgrade path. Qualify public
+  objects, enable RLS on user-facing tables, and define policies/grants explicitly.
+- Treat `security definer` functions as privileged code: set a safe `search_path`,
+  constrain grants, and validate ownership/role assumptions inside the function.
+- Update application mappings and types in the same change as the schema. Update
+  setup documentation when operators must apply a migration or configure a new
+  environment variable.
+- Review migrations for cross-user data exposure, destructive backfills, lock risk,
+  and behavior for both existing and newly created users.
+
+## Agent Queue and Local Worker
+
+- Treat `rendered_prompt` as an immutable execution snapshot. Render and store the
+  complete prompt before queueing; workers must execute that snapshot rather than
+  reconstructing it from mutable settings.
+- Preserve the queue lifecycle and ownership checks across claim and finish. A run
+  may only be completed by the worker that claimed it, and retries must not duplicate
+  downstream effects.
+- Keep repository access allowlisted twice: by the application configuration and by
+  `FLOWBOARD_REPOSITORIES` on the worker. Resolve configured paths and verify the
+  checkout; never derive a filesystem path directly from request data.
+- Preserve least privilege: refinement and Epic breakout jobs are read-only; write
+  jobs use `workspace-write`; network access and interactive approvals remain off
+  unless the user explicitly requests and justifies a security-model change.
+- When changing a job kind or result format, update its schema, queue producer,
+  claim response, worker execution, finish handler, UI consumer, and failure path
+  together.
+- Do not infer successful repository operations from a generic natural-language
+  response. Preserve or strengthen the explicit completion signal contract.
 
 ## Verification
 
-- Run `npm run lint` after code changes.
-- Run `npm run build` when changes affect application behavior, types, routing, configuration, or deployment.
-- Report which checks ran and disclose any checks that could not run or did not pass.
+Choose checks by impact and report exactly what ran:
+
+- Any code change: run `npm run lint`.
+- Changes to behavior, types, routes, worker contracts, configuration, dependencies,
+  or deployment: also run `npm run build`.
+- Worker changes: additionally run `node --check scripts/codex-worker.mjs` and test
+  the affected request/result path without printing tokens.
+- Migration changes: inspect the full migration in order and, when a disposable
+  Supabase environment is available, test both a fresh apply and an upgrade from the
+  previous migration. Explicitly report when database verification is unavailable.
+- Documentation-only changes: run `git diff --check`; code checks are optional unless
+  the documentation reflects a code or configuration change that also needs proof.
+
+There is no substitute for targeted manual verification of the changed behavior.
+For UI work, check loading, empty, success, and error states plus keyboard and narrow
+viewport behavior. Never claim a check passed if it was skipped, blocked, or failed.
 
 ## Definition of Done
 
-A task is complete when the requested behavior is implemented, relevant checks pass, documentation is updated when behavior or setup changes, and no known task-related issue remains hidden.
+A task is complete only when the requested behavior is implemented across every
+affected boundary, relevant checks pass, security and failure paths have been
+considered, and setup or behavior documentation is current. Report changed files,
+verification results, important assumptions, and any remaining risk or unverified
+step; do not hide known task-related issues.
 
 ## Maintaining This File
 
-- Treat this file as durable project guidance, not as task memory or a work log.
-- Update it only when work reveals a verified, reusable repository rule or when the user changes project policy.
-- Do not add temporary state, speculative conclusions, timestamps, ticket-specific details, or one-off implementation notes.
-- Keep additions concise and consistent with higher-priority instructions.
-- Mention material changes to this file in the final task summary.
+Keep this file as durable repository policy, not task memory. Add a rule only when
+it is supported by the codebase or explicitly established by the user. Do not add
+timestamps, ticket details, temporary workarounds, speculative architecture, or a
+work log. Keep future edits concise and mention material policy changes in the final
+summary.
