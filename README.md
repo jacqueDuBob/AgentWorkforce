@@ -36,11 +36,13 @@ Flowboard supports email/password sign-up, sign-in, password reset, persistent s
 
 Add repositories once through **GitHub repositories** in the header menu, then select the target repository and base branch on each ticket. **Column Setup** controls prompts and whether an agent may use every connected repository or only a selected subset. Manual and automatic runs render the selected column prompt with ticket context and store the complete snapshot on `agent_runs` before queuing.
 
+The **In Work** agent implements changes on a non-base branch and leaves them uncommitted. The **In Review** agent records actionable issues in the ticket's Findings field without committing. When review is clean, it commits and pushes the current branch; only that successful review push can queue automatic deployment. Move a ticket with findings back to **In Work** to run the implementation agent with those findings included in its prompt.
+
 ## Local Codex worker
 
 The Vercel app queues work in Supabase. A worker on your computer polls the Vercel API and runs the Codex SDK in the matching local Git checkout; local Codex authentication never leaves your computer.
 
-1. Apply migrations `009_local_codex_workers.sql` through `012_codex_epic_breakout_runs.sql` in Supabase.
+1. Apply all migrations through `015_review_findings_and_push.sql` in Supabase.
 2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel and redeploy.
 3. In Flowboard, open the workspace menu and choose **Local Codex worker**.
 4. Create a worker token and copy the generated startup command.

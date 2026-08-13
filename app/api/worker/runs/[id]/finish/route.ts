@@ -14,6 +14,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       finalResponse?: string; result?: Record<string, unknown>; threadId?: string; error?: string; gitPushSucceeded?: boolean;
     };
     const admin = getSupabaseAdmin();
+    const { data: sourceRun, error: sourceRunError } = await admin.from("agent_runs")
+      .select("ticket_id,column_name,user_id").eq("id", id).eq("user_id", worker.user_id).eq("worker_id", worker.id).eq("status", "in_progress").maybeSingle();
+    if (sourceRunError) throw sourceRunError;
+    if (!sourceRun) return NextResponse.json({ error: "Active run not found." }, { status: 404 });
+
+    const reviewFindings = !body.error && sourceRun.column_name === "In Review"
+      ? Array.isArray(body.result?.findings)
+        ? body.result.findings.filter((finding): finding is string => typeof finding === "string" && Boolean(finding.trim())).map((finding) => finding.trim())
+        : null
+      : undefined;
+    if (reviewFindings === null) return NextResponse.json({ error: "The review result did not include a findings array." }, { status: 400 });
+    if (reviewFindings?.length && body.gitPushSucceeded) return NextResponse.json({ error: "A review with findings cannot report a successful git push." }, { status: 400 });
+    if (reviewFindings && !reviewFindings.length && !body.gitPushSucceeded) return NextResponse.json({ error: "A clean review must commit and push before it can finish successfully." }, { status: 400 });
+
     const { data, error } = await admin.from("agent_runs").update({
       status: "finished", finished_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       codex_thread_id: body.threadId || null,
@@ -24,11 +38,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (error) throw error;
     if (!data) return NextResponse.json({ error: "Active run not found." }, { status: 404 });
 
+    if (reviewFindings) {
+      const { error: findingsError } = await admin.from("tickets").update({
+        findings: reviewFindings.map((finding) => `- ${finding}`).join("\n"), updated_at: new Date().toISOString(),
+      }).eq("id", sourceRun.ticket_id).eq("user_id", worker.user_id);
+      if (findingsError) throw findingsError;
+    }
+
     if (!body.error && body.gitPushSucceeded) {
-      const { data: sourceRun, error: sourceRunError } = await admin.from("agent_runs")
-        .select("ticket_id,column_name,user_id").eq("id", id).eq("user_id", worker.user_id).single();
-      if (sourceRunError) throw sourceRunError;
-      if (sourceRun.column_name === "In Work") {
+      if (sourceRun.column_name === "In Review") {
         const [{ data: ticket, error: ticketError }, { data: agent, error: agentError }, { data: settings }] = await Promise.all([
           admin.from("tickets").select("*").eq("id", sourceRun.ticket_id).eq("user_id", worker.user_id).single(),
           admin.from("column_agents").select("*").eq("column_name", "In Deployment").maybeSingle(),

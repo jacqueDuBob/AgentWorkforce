@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, kind: run.run_kind || "column", input: run.run_input, renderedPrompt: run.rendered_prompt },
       ticket: {
-        id: ticket.id, title: ticket.title, description: ticket.description,
+        id: ticket.id, title: ticket.title, description: ticket.description, findings: ticket.findings ?? "",
         acceptanceCriteria: ticket.acceptance_criteria_items, priority: ticket.priority,
         tags: ticket.tags, status: ticket.status, baseBranch: ticket.base_branch,
       },

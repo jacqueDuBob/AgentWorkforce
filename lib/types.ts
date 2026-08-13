@@ -15,6 +15,7 @@ export interface Ticket {
   id: string;
   title: string;
   description: string;
+  findings: string;
   priority: Priority;
   tags: string[];
   assignee: string;

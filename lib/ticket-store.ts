@@ -11,7 +11,7 @@ const readCriteria = (items: unknown, legacy: unknown): AcceptanceCriterion[] =>
 }) : splitCriteria(legacy);
 
 const fromRow = (row: Record<string, unknown>): Ticket => ({
-  id: String(row.id), title: String(row.title), description: String(row.description ?? ""),
+  id: String(row.id), title: String(row.title), description: String(row.description ?? ""), findings: String(row.findings ?? ""),
   priority: row.priority as Ticket["priority"], tags: (row.tags as string[]) ?? [],
   assignee: String(row.assignee ?? ""), acceptanceCriteria: readCriteria(row.acceptance_criteria_items, row.acceptance_criteria),
   repositoryId: String(row.repository_id ?? ""), baseBranch: String(row.base_branch ?? ""),
@@ -26,7 +26,7 @@ function isTicket(value: unknown): value is Ticket {
   if (!value || typeof value !== "object") return false;
   const ticket = value as Record<string, unknown>;
   return typeof ticket.id === "string" && typeof ticket.title === "string" &&
-    typeof ticket.description === "string" && priorities.includes(String(ticket.priority)) &&
+    typeof ticket.description === "string" && (ticket.findings === undefined || typeof ticket.findings === "string") && priorities.includes(String(ticket.priority)) &&
     Array.isArray(ticket.tags) && ticket.tags.length <= 3 && ticket.tags.every((tag) => typeof tag === "string") &&
     typeof ticket.assignee === "string" && Array.isArray(ticket.acceptanceCriteria) && ticket.acceptanceCriteria.every((item) => item && typeof item.id === "string" && typeof item.text === "string" && typeof item.completed === "boolean") && typeof ticket.repositoryId === "string" && typeof ticket.baseBranch === "string" &&
     COLUMNS.includes(ticket.status as (typeof COLUMNS)[number]) && Number.isFinite(ticket.position) &&
@@ -42,7 +42,7 @@ function readLocalTickets(): Ticket[] {
     const parsed: unknown = JSON.parse(stored);
     if (!Array.isArray(parsed)) throw new Error("Stored board is not an array");
     const migrated = parsed.map((value) => value && typeof value === "object" && typeof (value as Record<string, unknown>).acceptanceCriteria === "string" ? { ...(value as Record<string, unknown>), acceptanceCriteria: splitCriteria((value as Record<string, unknown>).acceptanceCriteria) } : value);
-    const normalized = migrated.map((value) => isTicket(value) ? { ...value, itemType: value.itemType ?? "Item", parentEpicId: value.parentEpicId ?? "", isDraft: value.isDraft ?? false } : value);
+    const normalized = migrated.map((value) => isTicket(value) ? { ...value, findings: value.findings ?? "", itemType: value.itemType ?? "Item", parentEpicId: value.parentEpicId ?? "", isDraft: value.isDraft ?? false } : value);
     const valid = normalized.filter(isTicket);
     if (valid.length !== parsed.length || normalized.some((value, index) => JSON.stringify(value) !== JSON.stringify(parsed[index]))) localStorage.setItem(STORAGE_KEY, JSON.stringify(valid));
     return valid;
@@ -53,7 +53,7 @@ function readLocalTickets(): Ticket[] {
 }
 
 const toRow = (ticket: Ticket) => ({
-  id: ticket.id, title: ticket.title, description: ticket.description, priority: ticket.priority,
+  id: ticket.id, title: ticket.title, description: ticket.description, findings: ticket.findings, priority: ticket.priority,
   tags: ticket.tags, assignee: ticket.assignee, acceptance_criteria_items: ticket.acceptanceCriteria,
   repository_id: ticket.repositoryId || null, base_branch: ticket.baseBranch, status: ticket.status, position: ticket.position,
   item_type: ticket.itemType, parent_epic_id: ticket.parentEpicId || null, is_draft: ticket.isDraft,

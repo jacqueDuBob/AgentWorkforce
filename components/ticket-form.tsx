@@ -5,7 +5,7 @@ import { Download, GripVertical, Plus, Trash2, X } from "lucide-react";
 import { COLUMNS, type ColumnId, type GitHubRepository, type Priority, type Ticket, type TicketDraft } from "@/lib/types";
 
 const priorities: Priority[] = ["Low", "Medium", "High", "Urgent"];
-const emptyDraft = (status: ColumnId): TicketDraft => ({ title: "", description: "", priority: "Medium", tags: [], assignee: "", acceptanceCriteria: [], repositoryId: "", baseBranch: "", status });
+const emptyDraft = (status: ColumnId): TicketDraft => ({ title: "", description: "", findings: "", priority: "Medium", tags: [], assignee: "", acceptanceCriteria: [], repositoryId: "", baseBranch: "", status });
 
 export function TicketForm({ open, ticket, repositories, initialStatus, onClose, onSave }: { open: boolean; ticket?: Ticket; repositories: GitHubRepository[]; initialStatus: ColumnId; onClose: () => void; onSave: (draft: TicketDraft) => void }) {
   if (!open) return null;
@@ -13,7 +13,7 @@ export function TicketForm({ open, ticket, repositories, initialStatus, onClose,
 }
 
 function TicketFormContent({ ticket, repositories, initialStatus, onClose, onSave }: { ticket?: Ticket; repositories: GitHubRepository[]; initialStatus: ColumnId; onClose: () => void; onSave: (draft: TicketDraft) => void }) {
-  const [draft, setDraft] = useState<TicketDraft>(() => ticket ? { title: ticket.title, description: ticket.description, priority: ticket.priority, tags: ticket.tags, assignee: ticket.assignee, acceptanceCriteria: ticket.acceptanceCriteria, repositoryId: ticket.repositoryId, baseBranch: ticket.baseBranch, status: ticket.status } : emptyDraft(initialStatus));
+  const [draft, setDraft] = useState<TicketDraft>(() => ticket ? { title: ticket.title, description: ticket.description, findings: ticket.findings, priority: ticket.priority, tags: ticket.tags, assignee: ticket.assignee, acceptanceCriteria: ticket.acceptanceCriteria, repositoryId: ticket.repositoryId, baseBranch: ticket.baseBranch, status: ticket.status } : emptyDraft(initialStatus));
   const [tag, setTag] = useState("");
   const [draggedCriterionId, setDraggedCriterionId] = useState<string>();
   const addTag = () => {
@@ -52,6 +52,7 @@ function TicketFormContent({ ticket, repositories, initialStatus, onClose, onSav
       <form onSubmit={(e) => { e.preventDefault(); onSave(draft); }}>
         <label>Title<input autoFocus required maxLength={120} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="A clear, concise title" /></label>
         <label>Description<textarea rows={4} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Add context and useful details…" /></label>
+        <label>Findings<textarea rows={4} value={draft.findings} onChange={(e) => setDraft({ ...draft, findings: e.target.value })} placeholder="Review findings appear here and are included in the next agent run." /></label>
         <div className="form-grid">
           <label>Priority<select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value as Priority })}>{priorities.map((p) => <option key={p}>{p}</option>)}</select></label>
           <label>Status<select value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as ColumnId })}>{COLUMNS.map((column) => <option key={column}>{column}</option>)}</select></label>

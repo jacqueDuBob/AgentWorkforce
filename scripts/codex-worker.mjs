@@ -52,6 +52,15 @@ const breakoutSchema = {
   } },
 };
 
+const reviewSchema = {
+  type: "object", additionalProperties: false, required: ["findings", "gitPushSucceeded", "summary"],
+  properties: {
+    findings: { type: "array", items: { type: "string" } },
+    gitPushSucceeded: { type: "boolean" },
+    summary: { type: "string" },
+  },
+};
+
 async function request(endpoint, init = {}) {
   const response = await fetch(`${appUrl}${endpoint}`, {
     ...init,
@@ -92,9 +101,13 @@ async function execute(job) {
   if (!job.run.renderedPrompt?.trim()) throw new Error("The queued run does not contain a rendered prompt snapshot.");
   const schema = job.run.kind === "refinement_questions" ? questionSchema
     : job.run.kind === "refinement_rewrite" ? rewriteSchema
-    : job.run.kind === "epic_breakout" ? breakoutSchema : undefined;
+    : job.run.kind === "epic_breakout" ? breakoutSchema
+    : job.run.column === "In Review" ? reviewSchema : undefined;
   const turn = await thread.run(job.run.renderedPrompt, schema ? { outputSchema: schema } : undefined);
-  if (schema) await finish(job.run.id, { result: JSON.parse(turn.finalResponse), threadId: thread.id });
+  if (schema) {
+    const result = JSON.parse(turn.finalResponse);
+    await finish(job.run.id, { result, threadId: thread.id, gitPushSucceeded: job.run.column === "In Review" && result.gitPushSucceeded === true });
+  }
   else await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id, gitPushSucceeded: reportsSuccessfulGitPush(turn.finalResponse) });
   console.log(`[finished] ${job.ticket.title}`);
 }
