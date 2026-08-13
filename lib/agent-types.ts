@@ -17,7 +17,7 @@ export interface ColumnAgent {
   allowedRepositoryIds: string[];
 }
 
-export type AgentRunStatus = "queued" | "in_progress" | "finished";
+export type AgentRunStatus = "queued" | "in_progress" | "waiting_for_answer" | "finished";
 
 export interface AgentRun {
   id: string;

@@ -88,6 +88,20 @@ export async function persistTickets(tickets: Ticket[]) {
   } else localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
 }
 
+export async function persistTicketPositions(tickets: Ticket[]) {
+  if (supabase) {
+    await ensureSupabaseSession();
+    const client = supabase;
+    await Promise.all(tickets.map(async (ticket) => {
+      const { error } = await client.from("tickets").update({ status: ticket.status, position: ticket.position }).eq("id", ticket.id);
+      if (error) throw error;
+    }));
+  } else {
+    const updates = new Map(tickets.map((ticket) => [ticket.id, ticket]));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(readLocalTickets().map((ticket) => updates.get(ticket.id) ?? ticket)));
+  }
+}
+
 export async function removeTicket(id: string) {
   if (supabase) {
     await ensureSupabaseSession();
