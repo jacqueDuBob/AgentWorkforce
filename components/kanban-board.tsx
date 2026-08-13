@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GitBranch, GripVertical, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, Zap, X } from "lucide-react";
+import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GitBranch, GripVertical, Laptop, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, Zap, X } from "lucide-react";
 import { COLUMNS, type ColumnId, type GitHubRepository, type Ticket, type TicketDraft } from "@/lib/types";
 import { loadTickets, persistTicket, persistTickets, removeTicket } from "@/lib/ticket-store";
 import { TicketForm } from "./ticket-form";
@@ -22,6 +22,7 @@ import { QueueDialog } from "./queue-dialog";
 import { completeBreakoutSession, confirmEpicRecommendation, recommendEpic, startEpicBreakout } from "@/lib/epic-store";
 import { EpicBreakoutDialog, type BreakoutOutcome } from "./epic-breakout-dialog";
 import type { EpicRecommendation, ProposedChild } from "@/lib/types";
+import { LocalWorkerSetup } from "./local-worker-setup";
 
 const priorityClass = (priority: Ticket["priority"]) => `priority ${priority.toLowerCase()}`;
 
@@ -60,7 +61,7 @@ function DeleteDialog({ ticket, onCancel, onConfirm }: { ticket?: Ticket; onCanc
 export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]); const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [instructionsOpen, setInstructionsOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]); const [masterInstructions, setMasterInstructions] = useState("");
-  const [queueOpen, setQueueOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false); const [workerOpen, setWorkerOpen] = useState(false);
   const [epicCandidate, setEpicCandidate] = useState<{ ticket: Ticket; recommendation: EpicRecommendation }>();
   const [breakoutRunning, setBreakoutRunning] = useState(false); const [breakoutOutcome, setBreakoutOutcome] = useState<BreakoutOutcome>(); const [breakoutError, setBreakoutError] = useState("");
   const headerMenuRef = useRef<HTMLDivElement>(null);
@@ -164,7 +165,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const confirmAndRunBreakout = async () => { if (epicCandidate) await runBreakout(epicCandidate.ticket); };
 
   return <main>
-    <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><div className="header-menu-wrap" ref={headerMenuRef}><button className="header-menu-button" onClick={() => setHeaderMenu(!headerMenu)} aria-label="Open workspace menu" aria-expanded={headerMenu}><Menu size={19}/></button>{headerMenu && <div className="header-menu"><button onClick={() => { setHeaderMenu(false); setQueueOpen(true); }}><ListTodo size={16}/><span><strong>Agent queue</strong><small>View queued runs and their items</small></span></button><button onClick={() => { setHeaderMenu(false); setSetupOpen(true); }}><Settings2 size={16}/><span><strong>Column Setup</strong><small>Configure agents and automation</small></span></button><button onClick={() => { setHeaderMenu(false); setInstructionsOpen(true); }}><BookOpenText size={16}/><span><strong>Master instructions</strong><small>Shared context for every agent</small></span></button><button onClick={() => { setHeaderMenu(false); setRepositoriesOpen(true); }}><Github size={16}/><span><strong>GitHub repositories</strong><small>Manage workspace repositories</small></span></button><button onClick={onSignOut}><LogOut size={16}/><span><strong>Sign out</strong><small>{userEmail}</small></span></button></div>}</div></div></nav>
+    <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><div className="header-menu-wrap" ref={headerMenuRef}><button className="header-menu-button" onClick={() => setHeaderMenu(!headerMenu)} aria-label="Open workspace menu" aria-expanded={headerMenu}><Menu size={19}/></button>{headerMenu && <div className="header-menu"><button onClick={() => { setHeaderMenu(false); setQueueOpen(true); }}><ListTodo size={16}/><span><strong>Agent queue</strong><small>View queued runs and their items</small></span></button><button onClick={() => { setHeaderMenu(false); setWorkerOpen(true); }}><Laptop size={16}/><span><strong>Local Codex worker</strong><small>Connect this board to Codex on your computer</small></span></button><button onClick={() => { setHeaderMenu(false); setSetupOpen(true); }}><Settings2 size={16}/><span><strong>Column Setup</strong><small>Configure agents and automation</small></span></button><button onClick={() => { setHeaderMenu(false); setInstructionsOpen(true); }}><BookOpenText size={16}/><span><strong>Master instructions</strong><small>Shared context for every agent</small></span></button><button onClick={() => { setHeaderMenu(false); setRepositoriesOpen(true); }}><Github size={16}/><span><strong>GitHub repositories</strong><small>Manage workspace repositories</small></span></button><button onClick={onSignOut}><LogOut size={16}/><span><strong>Sign out</strong><small>{userEmail}</small></span></button></div>}</div></div></nav>
     <div className="workspace-header"><div><p className="eyebrow">Workspace / Product</p><h1>Delivery board</h1><p>Move every idea from first thought to live.</p></div><button className="button primary create" onClick={() => openNew()}><Plus size={18}/> Create item</button></div>
     <div className="toolbar"><label className="search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search work items…" aria-label="Search work items"/>{query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15}/></button>}</label><span className="result-count">{query ? "Clear search to move items" : `${visible.length} ${visible.length === 1 ? "item" : "items"}`}</span></div>
     {error && <div className="error-banner">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}
@@ -176,6 +177,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     {repositoriesOpen && <RepositorySetup repositories={repositories} onClose={() => setRepositoriesOpen(false)} onAdd={createRepository} onDelete={removeRepository}/>}
     {instructionsOpen && <WorkspaceInstructions instructions={masterInstructions} onClose={() => setInstructionsOpen(false)} onSave={updateMasterInstructions}/>}
     {queueOpen && <QueueDialog tickets={tickets} onClose={() => setQueueOpen(false)}/>}
+    {workerOpen && <LocalWorkerSetup onClose={() => setWorkerOpen(false)}/>}
     {epicCandidate && <EpicBreakoutDialog
       ticket={epicCandidate.ticket}
       recommendation={epicCandidate.recommendation}
