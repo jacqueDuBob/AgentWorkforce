@@ -31,24 +31,6 @@ async function request(endpoint, init = {}) {
   return body;
 }
 
-function buildPrompt(job) {
-  return `You are ${job.run.agentName}, the Flowboard agent for the ${job.run.column} stage.
-
-Workspace instructions:
-${job.masterInstructions || "No workspace instructions configured."}
-
-Agent instructions:
-${job.agent.instructions}
-
-Work item:
-${JSON.stringify(job.ticket, null, 2)}
-
-Repository:
-${job.repository ? `${job.repository.owner}/${job.repository.name}, base branch ${job.ticket.baseBranch || job.repository.defaultBranch}` : "No repository selected."}
-
-Complete the requested stage using the repository as the source of truth. Work only within the current repository. Inspect existing instructions and conventions before changing files. Run relevant checks. End with a concise summary of changes, checks, and remaining risks.`;
-}
-
 async function finish(runId, result) {
   await request(`/api/worker/runs/${runId}/finish`, { method: "POST", body: JSON.stringify(result) });
 }
@@ -66,7 +48,8 @@ async function execute(job) {
     approvalPolicy: "never",
     networkAccessEnabled: false,
   });
-  const turn = await thread.run(buildPrompt(job));
+  if (!job.run.renderedPrompt?.trim()) throw new Error("The queued run does not contain a rendered prompt snapshot.");
+  const turn = await thread.run(job.run.renderedPrompt);
   await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id });
   console.log(`[finished] ${job.ticket.title}`);
 }

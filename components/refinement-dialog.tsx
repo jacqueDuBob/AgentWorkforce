@@ -5,6 +5,14 @@ import { Bot, Sparkles, X } from "lucide-react";
 import type { ColumnAgent } from "@/lib/agent-types";
 import type { RefinedTicketContent, RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 import type { GitHubRepository, Ticket } from "@/lib/types";
+import { supabase } from "@/lib/supabase";
+
+async function authenticatedHeaders() {
+  const { data } = await supabase!.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Your session has expired. Please sign in again.");
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
 
 export function RefinementDialog({ ticket, agent, repositories, masterInstructions, onClose, onSubmit }: {
   ticket: Ticket;
@@ -24,10 +32,10 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/refinement", {
-      method: "POST", signal: controller.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ticket: { ...ticket, acceptanceCriteria: ticket.acceptanceCriteria.map((item) => item.text).join("\n") }, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName }),
-    }).then(async (response) => {
+    authenticatedHeaders().then((headers) => fetch("/api/refinement", {
+      method: "POST", signal: controller.signal, headers,
+      body: JSON.stringify({ ticketId: ticket.id }),
+    })).then(async (response) => {
       const data = await response.json() as RefinementProposal & { error?: string };
       if (!response.ok) throw new Error(data.error || "Could not start the refinement agent.");
       setProposal(data); setRepositoryId(data.repositoryId || ticket.repositoryId);
@@ -48,7 +56,7 @@ export function RefinementDialog({ ticket, agent, repositories, masterInstructio
     setSubmitting(true); setError("");
     try {
       const completedAnswers = proposal.questions.map((question) => ({ questionId: question.id, question: question.question, answer: answers[question.id].trim() }));
-      const response = await fetch("/api/refinement", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rewrite", ticket: { ...ticket, acceptanceCriteria: ticket.acceptanceCriteria.map((item) => item.text).join("\n") }, repositories, masterInstructions, instructions: agent.instructions, modelName: agent.modelName, answers: completedAnswers }) });
+      const response = await fetch("/api/refinement", { method: "POST", headers: await authenticatedHeaders(), body: JSON.stringify({ action: "rewrite", ticketId: ticket.id, answers: completedAnswers }) });
       const rewrite = await response.json() as RefinedTicketContent & { error?: string };
       if (!response.ok) throw new Error(rewrite.error || "The refinement agent could not rewrite the ticket.");
       await onSubmit(repositoryId, proposal, completedAnswers, rewrite);

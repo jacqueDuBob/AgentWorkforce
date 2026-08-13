@@ -1,27 +1,21 @@
 import { ensureSupabaseSession, supabase } from "./supabase";
 
-export const DEFAULT_MASTER_INSTRUCTIONS = `Use the selected repository as the source of truth for technical context.
-Follow established repository terminology, architecture, and conventions.
-Distinguish confirmed facts from assumptions and unresolved questions.
-Prefer small, reviewable changes and measurable acceptance criteria.
-Do not invent requirements when behavior is ambiguous.`;
-
 function isMissingWorkspaceSettings(error: { code?: string; message?: string }) {
   return error.code === "42P01" || error.code === "PGRST205" ||
     Boolean(error.message?.includes("workspace_settings") && error.message.includes("schema cache"));
 }
 
 export async function loadMasterInstructions(): Promise<string> {
-  if (!supabase) return DEFAULT_MASTER_INSTRUCTIONS;
+  if (!supabase) return "";
   await ensureSupabaseSession();
   const { data, error } = await supabase.from("workspace_settings").select("master_instructions").maybeSingle();
   if (error) {
     // Master instructions were added after the core board schema. Keep the board
     // usable for existing installations until migration 005 is applied.
-    if (isMissingWorkspaceSettings(error)) return DEFAULT_MASTER_INSTRUCTIONS;
+    if (isMissingWorkspaceSettings(error)) return "";
     throw error;
   }
-  return data?.master_instructions || DEFAULT_MASTER_INSTRUCTIONS;
+  return data?.master_instructions ?? "";
 }
 
 export async function saveMasterInstructions(instructions: string): Promise<void> {

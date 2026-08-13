@@ -14,12 +14,9 @@ export async function POST(request: Request) {
     if (claimError) throw claimError;
     if (!run?.id) return new NextResponse(null, { status: 204 });
 
-    const [{ data: ticket, error: ticketError }, { data: agent, error: agentError }, { data: settings }] = await Promise.all([
-      admin.from("tickets").select("*").eq("id", run.ticket_id).eq("user_id", worker.user_id).single(),
-      admin.from("column_agents").select("*").eq("user_id", worker.user_id).eq("column_name", run.column_name).single(),
-      admin.from("workspace_settings").select("master_instructions").eq("user_id", worker.user_id).maybeSingle(),
-    ]);
-    if (ticketError || agentError) throw ticketError ?? agentError;
+    const { data: ticket, error: ticketError } = await admin.from("tickets").select("*")
+      .eq("id", run.ticket_id).eq("user_id", worker.user_id).single();
+    if (ticketError) throw ticketError;
 
     let repository = null;
     if (ticket.repository_id) {
@@ -30,15 +27,13 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, input: run.output },
+      run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, input: run.output, renderedPrompt: run.rendered_prompt },
       ticket: {
         id: ticket.id, title: ticket.title, description: ticket.description,
         acceptanceCriteria: ticket.acceptance_criteria_items, priority: ticket.priority,
         tags: ticket.tags, status: ticket.status, baseBranch: ticket.base_branch,
       },
-      agent: { instructions: agent.instructions },
       repository: repository && { owner: repository.owner, name: repository.name, defaultBranch: repository.default_branch },
-      masterInstructions: settings?.master_instructions ?? "",
     });
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "Could not claim a run.";

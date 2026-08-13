@@ -23,8 +23,17 @@ import { completeBreakoutSession, confirmEpicRecommendation, recommendEpic, star
 import { EpicBreakoutDialog, type BreakoutOutcome } from "./epic-breakout-dialog";
 import type { EpicRecommendation, ProposedChild } from "@/lib/types";
 import { LocalWorkerSetup } from "./local-worker-setup";
+import { renderPromptTemplate } from "@/lib/prompt-template";
+import { supabase } from "@/lib/supabase";
 
 const priorityClass = (priority: Ticket["priority"]) => `priority ${priority.toLowerCase()}`;
+
+async function authenticatedHeaders() {
+  const { data } = await supabase!.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Your session has expired. Please sign in again.");
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
 
 function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, onDelete, onRun, onForceBreakout }: { ticket: Ticket; agent?: ColumnAgent; overlay?: boolean; dragDisabled?: boolean; onEdit?: () => void; onDelete?: () => void; onRun?: () => void; onForceBreakout?: () => void }) {
   const [menu, setMenu] = useState(false);
@@ -74,7 +83,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const openNew = (status: ColumnId = "New") => { setEditing(undefined); setFormStatus(status); setFormOpen(true); };
   const save = (draft: TicketDraft) => { const now = new Date().toISOString(); const next = editing ? tickets.map((t) => t.id === editing.id ? { ...t, ...draft, updatedAt: now } : t) : [...tickets, { ...draft, id: crypto.randomUUID(), position: tickets.filter((t) => t.status === draft.status).length, createdAt: now, updatedAt: now, itemType: "Item" as const, parentEpicId: "", isDraft: false }]; setFormOpen(false); void saveAll(next); };
   const confirmDelete = async () => { if (!deleting) return; const ticket = deleting; const previous = tickets; const next = tickets.filter((item) => item.id !== ticket.id); setDeleting(undefined); setTickets(next); try { await removeTicket(ticket.id); } catch { setTickets(previous); setError("The item could not be deleted."); } };
-  const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (ticket.status === "In Refinement" && trigger === "manual") { setRefining(ticket); return; } const isAfterRefinement = COLUMNS.indexOf(ticket.status) > COLUMNS.indexOf("In Refinement"); if (isAfterRefinement && !ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (ticket.repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { await queueAgentRun(ticket.id, agent, trigger); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch { setError("The agent could not be started. Run the latest database migration and try again."); } };
+  const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (ticket.status === "In Refinement" && trigger === "manual") { setRefining(ticket); return; } const isAfterRefinement = COLUMNS.indexOf(ticket.status) > COLUMNS.indexOf("In Refinement"); if (isAfterRefinement && !ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (ticket.repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { const repository = repositories.find((item) => item.id === ticket.repositoryId); const renderedPrompt = renderPromptTemplate(agent.instructions, { ticket, repository, workspaceInstructions: masterInstructions, runContext: { trigger, queuedColumn: ticket.status } }); await queueAgentRun(ticket.id, agent, trigger, renderedPrompt); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch (cause) { setError(cause instanceof Error ? cause.message : "The agent could not be started. Run the latest database migration and try again."); } };
   const submitRefinement = async (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[], rewrite: RefinedTicketContent) => {
     if (!refining) return;
     const agent = agents.find((item) => item.column === "In Refinement");
@@ -83,7 +92,10 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     const { epicRecommendation, ...ticketRewrite } = rewrite;
     const updated = { ...refining, ...ticketRewrite, acceptanceCriteria: rewrite.acceptanceCriteria.split(/\r?\n/).map((text) => text.trim()).filter(Boolean).map((text) => ({ id: crypto.randomUUID(), text, completed: false })), tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
     await persistTickets(tickets.map((ticket) => ticket.id === updated.id ? updated : ticket));
-    await queueAgentRun(updated.id, agent, "manual", { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers, rewrittenTicket: rewrite } });
+    const runContext = { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers, rewrittenTicket: rewrite } };
+    const repository = repositories.find((item) => item.id === repositoryId);
+    const renderedPrompt = renderPromptTemplate(agent.instructions, { ticket: updated, repository, workspaceInstructions: masterInstructions, refinementAnswers: answers, runContext });
+    await queueAgentRun(updated.id, agent, "manual", renderedPrompt, runContext);
     setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
     if (epicRecommendation.recommended && updated.itemType !== "Epic") {
       const recommendation = await recommendEpic(updated.id, epicRecommendation.reason, agent.name);
@@ -143,7 +155,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       const { epic, session } = started;
       await persistTicket(epic);
       setTickets((current) => current.map((item) => item.id === epic.id ? epic : item));
-      const response = await fetch("/api/epic-breakout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ epic, domain, requesterEmail: userEmail, ...specializedAgent, instructions: configuredAgent?.instructions ?? "" }) });
+      const response = await fetch("/api/epic-breakout", { method: "POST", headers: await authenticatedHeaders(), body: JSON.stringify({ epicId: epic.id, domain }) });
       const proposal = await response.json() as { children?: ProposedChild[]; error?: string };
       if (!response.ok || !proposal.children) throw new Error(proposal.error || "The breakout agent did not return child items.");
       const created: Ticket[] = []; const failed: Array<{ title: string; error: string }> = [];
