@@ -76,5 +76,6 @@ export async function loadAgentRuns(): Promise<AgentRun[]> {
     id: row.id, ticketId: row.ticket_id, column: row.column_name, agentName: row.agent_name,
     modelName: row.model_name ?? "", trigger: row.trigger_type, status: row.status,
     output: row.output ?? undefined, error: row.error ?? "", createdAt: row.created_at, updatedAt: row.updated_at,
+    startedAt: row.started_at ?? undefined, finishedAt: row.finished_at ?? undefined,
   }));
 }

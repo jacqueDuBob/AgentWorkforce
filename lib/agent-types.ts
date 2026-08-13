@@ -28,6 +28,8 @@ export interface AgentRun {
   error: string;
   createdAt: string;
   updatedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
 }
 
 export const DEFAULT_AGENT_INSTRUCTIONS: Record<ColumnId, string> = {
