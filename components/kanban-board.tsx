@@ -145,7 +145,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     await saveAll(next);
     const moved = next.find((item) => item.id === ticket.id);
     const destinationAgent = agents.find((item) => item.column === destination);
-    if (moved && destinationAgent?.enabled && destinationAgent.startMode === "automatic" && destination !== ticket.status) await runAgent(moved, "automatic");
+    if (moved && destination !== "In Deployment" && destinationAgent?.enabled && destinationAgent.startMode === "automatic" && destination !== ticket.status) await runAgent(moved, "automatic");
   };
   const updateAgent = async (agent: ColumnAgent) => { await saveColumnAgent(agent); setAgents((current) => current.map((item) => item.column === agent.column ? agent : item)); };
   const createRepository = async (repository: Omit<GitHubRepository, "id">) => { const created = await addRepository(repository); setRepositories((current) => [...current, created]); };

@@ -1,6 +1,6 @@
 export const COLUMNS = [
   "New", "In Refinement", "Ready", "In Work", "Work Completed", "In Review",
-  "Review Completed", "In Testing", "Testing Completed", "Ready for Live", "Live",
+  "Review Completed", "In Testing", "Testing Completed", "In Deployment", "Deployed", "Ready for Live", "Live",
 ] as const;
 
 export type ColumnId = (typeof COLUMNS)[number];

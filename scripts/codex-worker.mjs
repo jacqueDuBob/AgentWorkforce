@@ -72,6 +72,10 @@ async function finish(runId, result) {
   await request(`/api/worker/runs/${runId}/finish`, { method: "POST", body: JSON.stringify(result) });
 }
 
+function reportsSuccessfulGitPush(response) {
+  return /(?:^|\\n)GIT_PUSH_SUCCEEDED\\s*:\s*true(?:\\n|$)/i.test(response || "");
+}
+
 async function execute(job) {
   const repositoryKey = job.repository ? `${job.repository.owner}/${job.repository.name}` : "";
   const configuredPath = repositoryKey ? repositories[repositoryKey] : "";
@@ -91,7 +95,7 @@ async function execute(job) {
     : job.run.kind === "epic_breakout" ? breakoutSchema : undefined;
   const turn = await thread.run(job.run.renderedPrompt, schema ? { outputSchema: schema } : undefined);
   if (schema) await finish(job.run.id, { result: JSON.parse(turn.finalResponse), threadId: thread.id });
-  else await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id });
+  else await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id, gitPushSucceeded: reportsSuccessfulGitPush(turn.finalResponse) });
   console.log(`[finished] ${job.ticket.title}`);
 }
 
