@@ -86,7 +86,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [instructionsOpen, setInstructionsOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]); const [masterInstructions, setMasterInstructions] = useState("");
   const [role, setRole] = useState<UserRole>("user");
   const [queueOpen, setQueueOpen] = useState(false); const [workerOpen, setWorkerOpen] = useState(false);
-  const [epicCandidate, setEpicCandidate] = useState<{ ticket: Ticket; recommendation: EpicRecommendation }>();
+  const [epicCandidate, setEpicCandidate] = useState<{ ticket: Ticket; recommendation?: EpicRecommendation; forced?: boolean }>();
   const [breakoutRunning, setBreakoutRunning] = useState(false); const [breakoutOutcome, setBreakoutOutcome] = useState<BreakoutOutcome>(); const [breakoutError, setBreakoutError] = useState("");
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -162,7 +162,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     try {
       const started = force
         ? await startEpicBreakout(ticket, userEmail, specializedAgent, domain)
-        : await confirmEpicRecommendation(ticket, epicCandidate!.recommendation, userEmail, specializedAgent, domain);
+        : await confirmEpicRecommendation(ticket, epicCandidate!.recommendation!, userEmail, specializedAgent, domain);
       const { epic, session } = started;
       await persistTicket(epic);
       setTickets((current) => current.map((item) => item.id === epic.id ? epic : item));
@@ -182,11 +182,16 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       if (force) setNotice(`${created.length} draft ${created.length === 1 ? "ticket" : "tickets"} created for “${epic.title}”${failed.length ? `; ${failed.length} failed` : ""}.`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "The Epic breakout could not be completed.";
-      if (force) { setNotice(""); setError(message); } else setBreakoutError(message);
+      if (force) setNotice("");
+      setBreakoutError(message);
     }
     finally { setBreakoutRunning(false); }
   };
-  const confirmAndRunBreakout = async () => { if (epicCandidate) await runBreakout(epicCandidate.ticket); };
+  const confirmAndRunBreakout = async () => { if (epicCandidate) await runBreakout(epicCandidate.ticket, epicCandidate.forced); };
+  const openForcedBreakout = (ticket: Ticket) => {
+    setBreakoutOutcome(undefined); setBreakoutError("");
+    setEpicCandidate({ ticket, forced: true });
+  };
 
   return <main>
     <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><div className="header-menu-wrap" ref={headerMenuRef}><button className="header-menu-button" onClick={() => setHeaderMenu(!headerMenu)} aria-label="Open workspace menu" aria-expanded={headerMenu}><Menu size={19}/></button>{headerMenu && <div className="header-menu"><button onClick={() => { setHeaderMenu(false); setQueueOpen(true); }}><ListTodo size={16}/><span><strong>Agent queue</strong><small>View queued runs and their items</small></span></button><button onClick={() => { setHeaderMenu(false); setWorkerOpen(true); }}><Laptop size={16}/><span><strong>Local Codex worker</strong><small>Connect this board to Codex on your computer</small></span></button>{role === "admin" && <button onClick={() => { setHeaderMenu(false); setSetupOpen(true); }}><Settings2 size={16}/><span><strong>Column Setup</strong><small>Configure agents and automation</small></span></button>}<button onClick={() => { setHeaderMenu(false); setInstructionsOpen(true); }}><BookOpenText size={16}/><span><strong>Master instructions</strong><small>Shared context for every agent</small></span></button><button onClick={() => { setHeaderMenu(false); setRepositoriesOpen(true); }}><Github size={16}/><span><strong>GitHub repositories</strong><small>Manage workspace repositories</small></span></button><button onClick={onSignOut}><LogOut size={16}/><span><strong>Sign out</strong><small>{userEmail}</small></span></button></div>}</div></div></nav>
@@ -194,7 +199,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     <div className="toolbar"><label className="search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search work items…" aria-label="Search work items"/>{query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15}/></button>}</label><span className="result-count">{query ? "Clear search to move items" : `${visible.length} ${visible.length === 1 ? "item" : "items"}`}</span></div>
     {error && <div className="error-banner">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}
     {notice && <div className="notice-banner"><Bot size={15}/><span>{notice}</span><button onClick={() => setNotice("")}><X size={15}/></button></div>}
-    {loading ? <div className="loading-board">Loading your workspace…</div> : <DndContext sensors={sensors} onDragStart={dragStart} onDragEnd={(event) => void dragEnd(event)} onDragCancel={() => setActive(undefined)}><div className="board">{COLUMNS.map((column) => <Column key={column} name={column} tickets={visible.filter((t) => t.status === column).sort((a,b) => a.position-b.position)} agent={agents.find((agent) => agent.column === column)} dragDisabled={Boolean(query)} onAdd={() => openNew(column)} onEdit={(ticket) => { setEditing(ticket); setFormStatus(ticket.status); setFormOpen(true); }} onDelete={setDeleting} onRun={(ticket) => void runAgent(ticket)} onForceBreakout={(ticket) => void runBreakout(ticket, true)}/>)}</div><DragOverlay>{active ? <Card ticket={active} overlay/> : null}</DragOverlay></DndContext>}
+    {loading ? <div className="loading-board">Loading your workspace…</div> : <DndContext sensors={sensors} onDragStart={dragStart} onDragEnd={(event) => void dragEnd(event)} onDragCancel={() => setActive(undefined)}><div className="board">{COLUMNS.map((column) => <Column key={column} name={column} tickets={visible.filter((t) => t.status === column).sort((a,b) => a.position-b.position)} agent={agents.find((agent) => agent.column === column)} dragDisabled={Boolean(query)} onAdd={() => openNew(column)} onEdit={(ticket) => { setEditing(ticket); setFormStatus(ticket.status); setFormOpen(true); }} onDelete={setDeleting} onRun={(ticket) => void runAgent(ticket)} onForceBreakout={openForcedBreakout}/>)}</div><DragOverlay>{active ? <Card ticket={active} overlay/> : null}</DragOverlay></DndContext>}
     <TicketForm open={formOpen} ticket={editing} repositories={repositories} initialStatus={formStatus} onClose={() => setFormOpen(false)} onSave={save}/>
     <DeleteDialog ticket={deleting} onCancel={() => setDeleting(undefined)} onConfirm={() => void confirmDelete()}/>
     {setupOpen && <ColumnSetup open agents={agents} repositories={repositories} onClose={() => setSetupOpen(false)} onSave={updateAgent}/>}
@@ -205,6 +210,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     {epicCandidate && <EpicBreakoutDialog
       ticket={epicCandidate.ticket}
       recommendation={epicCandidate.recommendation}
+      forced={epicCandidate.forced}
       agentName={repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.name ? `${repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.name} Breakout Agent` : "Application Breakout Agent"}
       domain={repositories.find((item) => item.id === epicCandidate.ticket.repositoryId) ? `${repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.owner}/${repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.name}` : "workspace application"}
       running={breakoutRunning} outcome={breakoutOutcome} error={breakoutError}
