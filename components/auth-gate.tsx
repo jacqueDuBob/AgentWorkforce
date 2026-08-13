@@ -6,11 +6,10 @@ import { ArrowRight, CheckCircle2, LayoutGrid, LockKeyhole, Mail } from "lucide-
 import { supabase } from "@/lib/supabase";
 import { KanbanBoard } from "./kanban-board";
 
-type AuthMode = "signin" | "signup" | "forgot" | "recovery";
+type AuthMode = "signin" | "forgot" | "recovery";
 
 const copy = {
   signin: { eyebrow: "Welcome back", title: "Sign in to Flowboard", description: "Pick up your work exactly where you left it.", action: "Sign in" },
-  signup: { eyebrow: "Create your workspace", title: "Start moving work forward", description: "Create an account to keep your board private and synced.", action: "Create account" },
   forgot: { eyebrow: "Password recovery", title: "Reset your password", description: "We’ll email you a secure link to choose a new password.", action: "Send reset link" },
   recovery: { eyebrow: "Choose a new password", title: "Secure your account", description: "Enter a new password with at least eight characters.", action: "Update password" },
 };
@@ -33,10 +32,6 @@ function AuthScreen({ recovery, onRecovered }: { recovery: boolean; onRecovered:
       if (mode === "signin") {
         const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
         if (authError) throw authError;
-      } else if (mode === "signup") {
-        const { data, error: authError } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } });
-        if (authError) throw authError;
-        if (!data.session) setMessage("Check your inbox to confirm your email, then return here to sign in.");
       } else if (mode === "forgot") {
         const { error: authError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
         if (authError) throw authError;
@@ -52,7 +47,7 @@ function AuthScreen({ recovery, onRecovered }: { recovery: boolean; onRecovered:
     } finally { setBusy(false); }
   };
 
-  return <main className="auth-page"><section className="auth-brand-panel"><div className="auth-brand"><span><LayoutGrid size={21}/></span>Flowboard</div><div><p className="eyebrow">A calmer way to deliver</p><h1>From first thought<br/>to live.</h1><p>Keep every piece of work visible, focused, and moving in the right direction.</p></div><p className="auth-footnote">A private workspace for focused teams.</p></section><section className="auth-form-panel"><div className="auth-card"><p className="eyebrow">{content.eyebrow}</p><h2>{content.title}</h2><p className="auth-description">{content.description}</p>{message ? <div className="auth-success"><CheckCircle2 size={19}/><span>{message}</span></div> : <form onSubmit={submit}>{mode !== "recovery" && <label>Email address<div className="auth-input"><Mail size={17}/><input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com"/></div></label>}{mode !== "forgot" && <label>{mode === "recovery" ? "New password" : "Password"}<div className="auth-input"><LockKeyhole size={17}/><input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters"/></div></label>}{error && <div className="auth-error" role="alert">{error}</div>}<button className="button primary auth-submit" disabled={busy}>{busy ? "Please wait…" : content.action}<ArrowRight size={17}/></button></form>}{mode === "signin" && <><button className="text-button forgot-link" onClick={() => changeMode("forgot")}>Forgot your password?</button><p className="auth-switch">New to Flowboard? <button onClick={() => changeMode("signup")}>Create an account</button></p></>}{mode === "signup" && <p className="auth-switch">Already have an account? <button onClick={() => changeMode("signin")}>Sign in</button></p>}{mode === "forgot" && <button className="text-button back-link" onClick={() => changeMode("signin")}>Back to sign in</button>}{message && mode !== "recovery" && <button className="text-button back-link" onClick={() => changeMode("signin")}>Back to sign in</button>}</div></section></main>;
+  return <main className="auth-page"><section className="auth-brand-panel"><div className="auth-brand"><span><LayoutGrid size={21}/></span>Flowboard</div><div><p className="eyebrow">A calmer way to deliver</p><h1>From first thought<br/>to live.</h1><p>Keep every piece of work visible, focused, and moving in the right direction.</p></div><p className="auth-footnote">A private workspace for focused teams.</p></section><section className="auth-form-panel"><div className="auth-card"><p className="eyebrow">{content.eyebrow}</p><h2>{content.title}</h2><p className="auth-description">{content.description}</p>{message ? <div className="auth-success"><CheckCircle2 size={19}/><span>{message}</span></div> : <form onSubmit={submit}>{mode !== "recovery" && <label>Email address<div className="auth-input"><Mail size={17}/><input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com"/></div></label>}{mode !== "forgot" && <label>{mode === "recovery" ? "New password" : "Password"}<div className="auth-input"><LockKeyhole size={17}/><input type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters"/></div></label>}{error && <div className="auth-error" role="alert">{error}</div>}<button className="button primary auth-submit" disabled={busy}>{busy ? "Please wait…" : content.action}<ArrowRight size={17}/></button></form>}{mode === "signin" && <button className="text-button forgot-link" onClick={() => changeMode("forgot")}>Forgot your password?</button>}{mode === "forgot" && <button className="text-button back-link" onClick={() => changeMode("signin")}>Back to sign in</button>}{message && mode !== "recovery" && <button className="text-button back-link" onClick={() => changeMode("signin")}>Back to sign in</button>}</div></section></main>;
 }
 
 export function AuthGate() {

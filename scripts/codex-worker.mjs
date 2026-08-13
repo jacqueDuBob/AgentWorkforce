@@ -59,7 +59,12 @@ async function request(endpoint, init = {}) {
   });
   if (response.status === 204) return null;
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || `Flowboard returned HTTP ${response.status}.`);
+  if (!response.ok) {
+    const detail = typeof body.error === "string"
+      ? body.error
+      : body.error ? JSON.stringify(body.error) : `Flowboard returned HTTP ${response.status}.`;
+    throw new Error(detail);
+  }
   return body;
 }
 
