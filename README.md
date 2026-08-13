@@ -23,8 +23,9 @@ The app requires a Supabase project for authentication and board storage:
 10. Run `supabase/migrations/010_database_prompt_templates.sql` to store all agent prompts in the database and snapshot rendered queue prompts.
 11. Run `supabase/migrations/011_codex_refinement_runs.sql` to add prioritized, repository-aware Codex refinement jobs.
 12. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
-13. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
-14. Restart the development server and create your first account.
+13. Run `supabase/migrations/017_ticket_conversations_notifications.sql` to add participant-scoped ticket conversations, agent questions, approvals, and in-app notifications.
+14. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+15. Restart the development server and create your first account.
 
 ## Deploy to Vercel
 

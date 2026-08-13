@@ -28,8 +28,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (reviewFindings?.length && body.gitPushSucceeded) return NextResponse.json({ error: "A review with findings cannot report a successful git push." }, { status: 400 });
     if (reviewFindings && !reviewFindings.length && !body.gitPushSucceeded) return NextResponse.json({ error: "A clean review must commit and push before it can finish successfully." }, { status: 400 });
 
+    const questions = !body.error && Array.isArray(body.result?.questions) ? body.result.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()) : [];
+    const proposals = !body.error && Array.isArray(body.result?.proposals) ? body.result.proposals.filter((item): item is { title: string; description: string; changes: Record<string, unknown> } => Boolean(item && typeof item === "object" && typeof (item as Record<string, unknown>).title === "string" && typeof (item as Record<string, unknown>).description === "string" && typeof (item as Record<string, unknown>).changes === "object")).slice(0, 10) : [];
+    const waiting = questions.length > 0;
+
     const { data, error } = await admin.from("agent_runs").update({
-      status: "finished", finished_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      status: waiting ? "waiting_for_answer" : "finished", finished_at: waiting ? null : new Date().toISOString(), updated_at: new Date().toISOString(),
       codex_thread_id: body.threadId || null,
       output: body.result ? { result: body.result, threadId: body.threadId || null }
         : body.finalResponse ? { finalResponse: body.finalResponse, threadId: body.threadId || null } : undefined,
@@ -37,6 +41,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }).eq("id", id).eq("user_id", worker.user_id).eq("worker_id", worker.id).eq("status", "in_progress").select("id").maybeSingle();
     if (error) throw error;
     if (!data) return NextResponse.json({ error: "Active run not found." }, { status: 404 });
+
+    if (waiting) {
+      const { error: questionError } = await admin.from("agent_questions").insert(questions.map((question) => ({ ticket_id: sourceRun.ticket_id, run_id: id, question })));
+      if (questionError) throw questionError;
+      await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "question", notification_title: "Agent question needs an answer", notification_body: questions[0] });
+    }
+    if (proposals.length) {
+      const { error: proposalError } = await admin.from("ticket_proposals").insert(proposals.map((proposal) => ({ ticket_id: sourceRun.ticket_id, run_id: id, title: proposal.title.trim(), description: proposal.description.trim(), changes: proposal.changes })));
+      if (proposalError) throw proposalError;
+      await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "proposal", notification_title: "Approval needed for a proposed update", notification_body: proposals[0].title });
+    }
 
     if (reviewFindings) {
       const { error: findingsError } = await admin.from("tickets").update({

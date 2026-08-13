@@ -63,6 +63,15 @@ const reviewSchema = {
   },
 };
 
+const workflowSchema = {
+  type: "object", additionalProperties: false, required: ["summary", "questions", "proposals"],
+  properties: {
+    summary: { type: "string" },
+    questions: { type: "array", items: { type: "string" } },
+    proposals: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "description", "changes"], properties: { title: { type: "string" }, description: { type: "string" }, changes: { type: "object" } } } },
+  },
+};
+
 async function request(endpoint, init = {}) {
   const response = await fetch(`${appUrl}${endpoint}`, {
     ...init,
@@ -142,7 +151,7 @@ async function execute(job) {
   const schema = job.run.kind === "refinement_questions" ? questionSchema
     : job.run.kind === "refinement_rewrite" ? rewriteSchema
     : job.run.kind === "epic_breakout" ? breakoutSchema
-    : job.run.column === "In Review" ? reviewSchema : undefined;
+    : job.run.column === "In Review" ? reviewSchema : job.run.column === "In Work" ? workflowSchema : undefined;
   const turn = await thread.run(job.run.renderedPrompt, schema ? { outputSchema: schema } : undefined);
   if (schema) {
     const result = JSON.parse(turn.finalResponse);

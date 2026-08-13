@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GitBranch, GripVertical, Laptop, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, Zap, X } from "lucide-react";
+import { Bell, BookOpenText, Bot, CircleUserRound, Ellipsis, Github, GitBranch, GripVertical, Laptop, LayoutGrid, ListTodo, LogOut, Menu, Play, Plus, Search, Settings2, Trash2, Zap, X } from "lucide-react";
 import { COLUMNS, type ColumnId, type GitHubRepository, type Ticket, type TicketDraft } from "@/lib/types";
-import { loadTickets, persistTicket, persistTickets, removeTicket } from "@/lib/ticket-store";
+import { loadTickets, persistTicket, persistTicketPositions, persistTickets, removeTicket } from "@/lib/ticket-store";
 import { TicketForm } from "./ticket-form";
 import { ColumnSetup } from "./column-setup";
 import { loadAgentRun, loadColumnAgents, loadCurrentUserRole, queueAgentRun, saveColumnAgent, type UserRole } from "@/lib/agent-store";
@@ -25,6 +25,9 @@ import type { EpicRecommendation, ProposedChild } from "@/lib/types";
 import { LocalWorkerSetup } from "./local-worker-setup";
 import { renderPromptTemplate } from "@/lib/prompt-template";
 import { supabase } from "@/lib/supabase";
+import { TicketCollaboration } from "./ticket-collaboration";
+import { loadNotifications, markNotificationRead } from "@/lib/collaboration-store";
+import type { Notification } from "@/lib/collaboration-types";
 
 const priorityClass = (priority: Ticket["priority"]) => `priority ${priority.toLowerCase()}`;
 
@@ -49,7 +52,7 @@ async function waitForBreakout(runId: string): Promise<{ children: ProposedChild
   }
 }
 
-function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, onDelete, onRun, onForceBreakout }: { ticket: Ticket; agent?: ColumnAgent; overlay?: boolean; dragDisabled?: boolean; onEdit?: () => void; onDelete?: () => void; onRun?: () => void; onForceBreakout?: () => void }) {
+function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, onDelete, onRun, onForceBreakout, onConversation }: { ticket: Ticket; agent?: ColumnAgent; overlay?: boolean; dragDisabled?: boolean; onEdit?: () => void; onDelete?: () => void; onRun?: () => void; onForceBreakout?: () => void; onConversation?: () => void }) {
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const sortable = useSortable({ id: ticket.id, data: { type: "ticket", ticket }, disabled: overlay || dragDisabled });
@@ -64,15 +67,15 @@ function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, on
     <div className="card-top"><span className={priorityClass(ticket.priority)}><i/>{ticket.priority}</span>{ticket.itemType === "Epic" && <span className="epic-badge"><GitBranch size={11}/> Epic</span>}{ticket.isDraft && <span className="draft-badge">Draft</span>}<div className="card-tools" ref={menuRef}><button className="grip" {...sortable.listeners} disabled={dragDisabled} title={dragDisabled ? "Clear search to move items" : undefined} aria-label={`Move ${ticket.title}`}><GripVertical size={16}/></button><button className="more" onClick={() => setMenu(!menu)} aria-label="Ticket actions" aria-expanded={menu}><Ellipsis size={18}/></button>{menu && <div className="card-menu"><button onClick={() => { setMenu(false); onEdit?.(); }}>Edit</button><button onClick={() => { setMenu(false); onForceBreakout?.(); }}><Zap size={14}/> Force refinement breakout</button><button className="danger" onClick={() => { setMenu(false); onDelete?.(); }}><Trash2 size={14}/> Delete</button></div>}</div></div>
     <h3 onClick={onEdit}>{ticket.title}</h3>{ticket.description && <p>{ticket.description}</p>}
     {ticket.tags.length > 0 && <div className="tag-list compact">{ticket.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}</div>}
-    <div className="card-footer"><span className="ticket-id">FW-{ticket.id.replaceAll("-", "").slice(0, 8).toUpperCase()}</span><div className="card-footer-actions">{agent?.enabled && agent.startMode === "manual" && <button className="run-agent" onClick={onRun} title={`Run ${agent.name}`} aria-label={`Run ${agent.name}`}><Play size={11}/> Run agent</button>}{ticket.assignee ? <span className="assignee" title={ticket.assignee}>{ticket.assignee.slice(0, 2).toUpperCase()}</span> : <CircleUserRound size={21} className="unassigned"/>}</div></div>
+    <div className="card-footer"><button className="conversation-link" onClick={onConversation}>Conversation</button><span className="ticket-id">FW-{ticket.id.replaceAll("-", "").slice(0, 8).toUpperCase()}</span><div className="card-footer-actions">{agent?.enabled && agent.startMode === "manual" && <button className="run-agent" onClick={onRun} title={`Run ${agent.name}`} aria-label={`Run ${agent.name}`}><Play size={11}/> Run agent</button>}{ticket.assignee ? <span className="assignee" title={ticket.assignee}>{ticket.assignee.slice(0, 2).toUpperCase()}</span> : <CircleUserRound size={21} className="unassigned"/>}</div></div>
   </article>;
 }
 
-function Column({ name, tickets, agent, dragDisabled, onAdd, onEdit, onDelete, onRun, onForceBreakout }: { name: ColumnId; tickets: Ticket[]; agent?: ColumnAgent; dragDisabled: boolean; onAdd: () => void; onEdit: (t: Ticket) => void; onDelete: (t: Ticket) => void; onRun: (t: Ticket) => void; onForceBreakout: (t: Ticket) => void }) {
+function Column({ name, tickets, agent, dragDisabled, onAdd, onEdit, onDelete, onRun, onForceBreakout, onConversation }: { name: ColumnId; tickets: Ticket[]; agent?: ColumnAgent; dragDisabled: boolean; onAdd: () => void; onEdit: (t: Ticket) => void; onDelete: (t: Ticket) => void; onRun: (t: Ticket) => void; onForceBreakout: (t: Ticket) => void; onConversation: (t: Ticket) => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: name, data: { type: "column", status: name } });
   return <section className={`board-column ${isOver ? "over" : ""}`} ref={setNodeRef}>
     <header><div><span className="status-dot"/><h2>{name}</h2><span className="count">{tickets.length}</span>{agent?.enabled && <span className={`agent-mode ${agent.startMode}`} title={`${agent.name} · ${agent.startMode}`}><Bot size={11}/></span>}</div><button onClick={onAdd} aria-label={`Add item to ${name}`}><Plus size={18}/></button></header>
-    <SortableContext items={tickets.map((ticket) => ticket.id)} strategy={verticalListSortingStrategy}><div className="column-cards">{tickets.map((ticket) => <Card key={ticket.id} ticket={ticket} agent={agent} dragDisabled={dragDisabled} onEdit={() => onEdit(ticket)} onDelete={() => onDelete(ticket)} onRun={() => onRun(ticket)} onForceBreakout={() => onForceBreakout(ticket)}/>)}{tickets.length === 0 && <button className="empty-column" onClick={onAdd}><Plus size={16}/> Add item</button>}</div></SortableContext>
+    <SortableContext items={tickets.map((ticket) => ticket.id)} strategy={verticalListSortingStrategy}><div className="column-cards">{tickets.map((ticket) => <Card key={ticket.id} ticket={ticket} agent={agent} dragDisabled={dragDisabled} onEdit={() => onEdit(ticket)} onDelete={() => onDelete(ticket)} onRun={() => onRun(ticket)} onForceBreakout={() => onForceBreakout(ticket)} onConversation={() => onConversation(ticket)}/>)}{tickets.length === 0 && <button className="empty-column" onClick={onAdd}><Plus size={16}/> Add item</button>}</div></SortableContext>
   </section>;
 }
 
@@ -86,12 +89,13 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [instructionsOpen, setInstructionsOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]); const [masterInstructions, setMasterInstructions] = useState("");
   const [role, setRole] = useState<UserRole>("user");
   const [queueOpen, setQueueOpen] = useState(false); const [workerOpen, setWorkerOpen] = useState(false);
+  const [conversationTicket, setConversationTicket] = useState<Ticket>(); const [notifications, setNotifications] = useState<Notification[]>([]); const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [epicCandidate, setEpicCandidate] = useState<{ ticket: Ticket; recommendation?: EpicRecommendation; forced?: boolean }>();
   const [breakoutRunning, setBreakoutRunning] = useState(false); const [recommendationDismissing, setRecommendationDismissing] = useState(false); const [breakoutOutcome, setBreakoutOutcome] = useState<BreakoutOutcome>(); const [breakoutError, setBreakoutError] = useState("");
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  useEffect(() => { Promise.all([loadTickets(), loadColumnAgents(), loadRepositories(), loadMasterInstructions(), loadCurrentUserRole()]).then(([loadedTickets, loadedAgents, loadedRepositories, loadedInstructions, loadedRole]) => { setTickets(loadedTickets); setAgents(loadedAgents); setRepositories(loadedRepositories); setMasterInstructions(loadedInstructions); setRole(loadedRole); }).catch(() => setError("Could not load your board. Make sure all database migrations are installed." )).finally(() => setLoading(false)); }, []);
+  useEffect(() => { Promise.all([loadTickets(), loadColumnAgents(), loadRepositories(), loadMasterInstructions(), loadCurrentUserRole(), loadNotifications()]).then(([loadedTickets, loadedAgents, loadedRepositories, loadedInstructions, loadedRole, loadedNotifications]) => { setTickets(loadedTickets); setAgents(loadedAgents); setRepositories(loadedRepositories); setMasterInstructions(loadedInstructions); setRole(loadedRole); setNotifications(loadedNotifications); }).catch(() => setError("Could not load your board. Make sure all database migrations are installed." )).finally(() => setLoading(false)); }, []);
   useEffect(() => { if (!headerMenu) return; const dismiss = (event: PointerEvent) => { if (!headerMenuRef.current?.contains(event.target as Node)) setHeaderMenu(false); }; document.addEventListener("pointerdown", dismiss); return () => document.removeEventListener("pointerdown", dismiss); }, [headerMenu]);
   const visible = useMemo(() => { const term = query.toLowerCase(); return tickets.filter((t) => !term || [t.title, t.description, t.findings, t.assignee, ...t.tags].some((value) => value.toLowerCase().includes(term))); }, [tickets, query]);
   const saveAll = async (next: Ticket[]) => { setTickets(next); try { await persistTickets(next); setError(""); } catch { setError("Your change could not be saved. Please try again."); } };
@@ -143,7 +147,16 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       affected.filter((item) => item.status === status).forEach((item, position) => updates.set(item.id, { ...item, position, updatedAt: now }));
     }
     const next = tickets.map((item) => updates.get(item.id) ?? item);
-    await saveAll(next);
+    const changed = [...updates.values()];
+    setTickets(next);
+    try {
+      await persistTicketPositions(changed);
+      setError("");
+    } catch {
+      setTickets(tickets);
+      setError("Your change could not be saved. Please try again.");
+      return;
+    }
     const moved = next.find((item) => item.id === ticket.id);
     const destinationAgent = agents.find((item) => item.column === destination);
     if (moved && destination !== "In Deployment" && destinationAgent?.enabled && destinationAgent.startMode === "automatic" && destination !== ticket.status) await runAgent(moved, "automatic");
@@ -206,13 +219,15 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
 
   return <main>
     <nav><div className="brand"><span><LayoutGrid size={18}/></span><strong>Flowboard</strong></div><div className="nav-meta"><span className="connection"><i/>Synced</span><span className="user-email">{userEmail}</span><div className="header-menu-wrap" ref={headerMenuRef}><button className="header-menu-button" onClick={() => setHeaderMenu(!headerMenu)} aria-label="Open workspace menu" aria-expanded={headerMenu}><Menu size={19}/></button>{headerMenu && <div className="header-menu"><button onClick={() => { setHeaderMenu(false); setQueueOpen(true); }}><ListTodo size={16}/><span><strong>Agent queue</strong><small>View queued runs and their items</small></span></button><button onClick={() => { setHeaderMenu(false); setWorkerOpen(true); }}><Laptop size={16}/><span><strong>Local Codex worker</strong><small>Connect this board to Codex on your computer</small></span></button>{role === "admin" && <button onClick={() => { setHeaderMenu(false); setSetupOpen(true); }}><Settings2 size={16}/><span><strong>Column Setup</strong><small>Configure agents and automation</small></span></button>}<button onClick={() => { setHeaderMenu(false); setInstructionsOpen(true); }}><BookOpenText size={16}/><span><strong>Master instructions</strong><small>Shared context for every agent</small></span></button><button onClick={() => { setHeaderMenu(false); setRepositoriesOpen(true); }}><Github size={16}/><span><strong>GitHub repositories</strong><small>Manage workspace repositories</small></span></button><button onClick={onSignOut}><LogOut size={16}/><span><strong>Sign out</strong><small>{userEmail}</small></span></button></div>}</div></div></nav>
-    <div className="workspace-header"><div><p className="eyebrow">Workspace / Product</p><h1>Delivery board</h1><p>Move every idea from first thought to live.</p></div><button className="button primary create" onClick={() => openNew()}><Plus size={18}/> Create item</button></div>
+    <div className="workspace-header"><div><p className="eyebrow">Workspace / Product</p><h1>Delivery board</h1><p>Move every idea from first thought to live.</p></div><div className="workspace-actions"><button className="button secondary" onClick={() => setNotificationsOpen(!notificationsOpen)}><Bell size={16}/> Notifications {notifications.some((item) => !item.readAt) ? `(${notifications.filter((item) => !item.readAt).length})` : ""}</button><button className="button primary create" onClick={() => openNew()}><Plus size={18}/> Create item</button></div></div>
+    {notificationsOpen && <div className="notification-panel board-notifications"><strong>Notifications</strong>{notifications.length ? notifications.map((item) => <button key={item.id} className={item.readAt ? "read" : ""} onClick={() => { void markNotificationRead(item.id); setNotifications((current) => current.map((notification) => notification.id === item.id ? { ...notification, readAt: new Date().toISOString() } : notification)); if (item.ticketId) setConversationTicket(tickets.find((ticket) => ticket.id === item.ticketId)); }}>{item.title}<small>{item.body}</small></button>) : <small>No notifications.</small>}</div>}
     <div className="toolbar"><label className="search"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search work items…" aria-label="Search work items"/>{query && <button onClick={() => setQuery("")} aria-label="Clear search"><X size={15}/></button>}</label><span className="result-count">{query ? "Clear search to move items" : `${visible.length} ${visible.length === 1 ? "item" : "items"}`}</span></div>
     {error && <div className="error-banner">{error}<button onClick={() => setError("")}><X size={15}/></button></div>}
     {notice && <div className="notice-banner"><Bot size={15}/><span>{notice}</span><button onClick={() => setNotice("")}><X size={15}/></button></div>}
-    {loading ? <div className="loading-board">Loading your workspace…</div> : <DndContext sensors={sensors} onDragStart={dragStart} onDragEnd={(event) => void dragEnd(event)} onDragCancel={() => setActive(undefined)}><div className="board">{COLUMNS.map((column) => <Column key={column} name={column} tickets={visible.filter((t) => t.status === column).sort((a,b) => a.position-b.position)} agent={agents.find((agent) => agent.column === column)} dragDisabled={Boolean(query)} onAdd={() => openNew(column)} onEdit={(ticket) => { setEditing(ticket); setFormStatus(ticket.status); setFormOpen(true); }} onDelete={setDeleting} onRun={(ticket) => void runAgent(ticket)} onForceBreakout={openForcedBreakout}/>)}</div><DragOverlay>{active ? <Card ticket={active} overlay/> : null}</DragOverlay></DndContext>}
+    {loading ? <div className="loading-board">Loading your workspace…</div> : <DndContext sensors={sensors} onDragStart={dragStart} onDragEnd={(event) => void dragEnd(event)} onDragCancel={() => setActive(undefined)}><div className="board">{COLUMNS.map((column) => <Column key={column} name={column} tickets={visible.filter((t) => t.status === column).sort((a,b) => a.position-b.position)} agent={agents.find((agent) => agent.column === column)} dragDisabled={Boolean(query)} onAdd={() => openNew(column)} onEdit={(ticket) => { setEditing(ticket); setFormStatus(ticket.status); setFormOpen(true); }} onDelete={setDeleting} onRun={(ticket) => void runAgent(ticket)} onForceBreakout={openForcedBreakout} onConversation={setConversationTicket}/>)}</div><DragOverlay>{active ? <Card ticket={active} overlay/> : null}</DragOverlay></DndContext>}
     <TicketForm open={formOpen} ticket={editing} repositories={repositories} initialStatus={formStatus} onClose={() => setFormOpen(false)} onSave={save}/>
     <DeleteDialog ticket={deleting} onCancel={() => setDeleting(undefined)} onConfirm={() => void confirmDelete()}/>
+    {conversationTicket && <TicketCollaboration ticket={conversationTicket} onClose={() => setConversationTicket(undefined)}/>}
     {setupOpen && <ColumnSetup open agents={agents} repositories={repositories} onClose={() => setSetupOpen(false)} onSave={updateAgent}/>}
     {repositoriesOpen && <RepositorySetup repositories={repositories} onClose={() => setRepositoriesOpen(false)} onAdd={createRepository} onDelete={removeRepository}/>}
     {instructionsOpen && <WorkspaceInstructions instructions={masterInstructions} onClose={() => setInstructionsOpen(false)} onSave={updateMasterInstructions}/>}
