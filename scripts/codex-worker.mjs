@@ -68,7 +68,17 @@ const workflowSchema = {
   properties: {
     summary: { type: "string" },
     questions: { type: "array", items: { type: "string" } },
-    proposals: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "description", "changes"], properties: { title: { type: "string" }, description: { type: "string" }, changes: { type: "object" } } } },
+    proposals: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "description", "changes"], properties: {
+      title: { type: "string" }, description: { type: "string" },
+      changes: { type: "object", additionalProperties: false,
+        required: ["title", "description", "priority", "tags", "assignee"], properties: {
+          title: { type: ["string", "null"] },
+          description: { type: ["string", "null"] },
+          priority: { type: ["string", "null"], enum: ["Low", "Medium", "High", "Urgent", null] },
+          tags: { anyOf: [{ type: "array", maxItems: 3, items: { type: "string" } }, { type: "null" }] },
+          assignee: { type: ["string", "null"] },
+        } },
+    } } },
   },
 };
 
