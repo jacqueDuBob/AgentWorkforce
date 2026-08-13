@@ -29,7 +29,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (reviewFindings && !reviewFindings.length && !body.gitPushSucceeded) return NextResponse.json({ error: "A clean review must commit and push before it can finish successfully." }, { status: 400 });
 
     const questions = !body.error && Array.isArray(body.result?.questions) ? body.result.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()) : [];
-    const proposals = !body.error && Array.isArray(body.result?.proposals) ? body.result.proposals.filter((item): item is { title: string; description: string; changes: Record<string, unknown> } => Boolean(item && typeof item === "object" && typeof (item as Record<string, unknown>).title === "string" && typeof (item as Record<string, unknown>).description === "string" && typeof (item as Record<string, unknown>).changes === "object")).slice(0, 10) : [];
+    const proposals = !body.error && Array.isArray(body.result?.proposals) ? body.result.proposals.filter((item): item is { title: string; description: string; changes: Record<string, unknown> } => Boolean(item && typeof item === "object" && typeof (item as Record<string, unknown>).title === "string" && typeof (item as Record<string, unknown>).description === "string" && (item as Record<string, unknown>).changes && typeof (item as Record<string, unknown>).changes === "object" && !Array.isArray((item as Record<string, unknown>).changes))).slice(0, 10) : [];
     const waiting = questions.length > 0;
 
     const { data, error } = await admin.from("agent_runs").update({
@@ -48,7 +48,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "question", notification_title: "Agent question needs an answer", notification_body: questions[0] });
     }
     if (proposals.length) {
-      const { error: proposalError } = await admin.from("ticket_proposals").insert(proposals.map((proposal) => ({ ticket_id: sourceRun.ticket_id, run_id: id, title: proposal.title.trim(), description: proposal.description.trim(), changes: proposal.changes })));
+      const supportedChanges = new Set(["title", "description", "priority", "tags", "assignee"]);
+      const { error: proposalError } = await admin.from("ticket_proposals").insert(proposals.map((proposal) => ({
+        ticket_id: sourceRun.ticket_id, run_id: id, title: proposal.title.trim(), description: proposal.description.trim(),
+        changes: Object.fromEntries(Object.entries(proposal.changes).filter(([key, value]) => supportedChanges.has(key) && value !== null)),
+      })));
       if (proposalError) throw proposalError;
       await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "proposal", notification_title: "Approval needed for a proposed update", notification_body: proposals[0].title });
     }

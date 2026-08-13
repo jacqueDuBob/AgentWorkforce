@@ -22,10 +22,11 @@ The app requires a Supabase project for authentication and board storage:
 9. Run `supabase/migrations/009_local_codex_workers.sql` to add secure local-worker credentials and claims.
 10. Run `supabase/migrations/010_database_prompt_templates.sql` to store all agent prompts in the database and snapshot rendered queue prompts.
 11. Run `supabase/migrations/011_codex_refinement_runs.sql` to add prioritized, repository-aware Codex refinement jobs.
-12. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
-13. Run `supabase/migrations/017_ticket_conversations_notifications.sql` to add participant-scoped ticket conversations, agent questions, approvals, and in-app notifications.
-14. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
-15. Restart the development server and create your first account.
+12. Run migrations `012_codex_epic_breakout_runs.sql` through `017_ticket_conversations_notifications.sql` in numerical order.
+13. If migration 014 was previously applied before migration 013, run `018_repair_deployment_and_worker_git.sql` instead of replaying migration 013 against the newer schema.
+14. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
+15. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+16. Restart the development server and create your first account.
 
 ## Deploy to Vercel
 
