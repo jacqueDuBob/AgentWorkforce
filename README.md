@@ -40,7 +40,7 @@ Add repositories once through **GitHub repositories** in the header menu, then s
 
 The Vercel app queues work in Supabase. A worker on your computer polls the Vercel API and runs the Codex SDK in the matching local Git checkout; local Codex authentication never leaves your computer.
 
-1. Apply migrations `009_local_codex_workers.sql`, `010_database_prompt_templates.sql`, and `011_codex_refinement_runs.sql` in Supabase.
+1. Apply migrations `009_local_codex_workers.sql` through `012_codex_epic_breakout_runs.sql` in Supabase.
 2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel and redeploy.
 3. In Flowboard, open the workspace menu and choose **Local Codex worker**.
 4. Create a worker token and copy the generated startup command.
@@ -52,4 +52,4 @@ FLOWBOARD_REPOSITORIES='{"jacqueDuBob/AgentWorkforce":"/Users/jakobdrees/AgentWo
 
 6. Run the copied command from this project directory. Leave the process running while agents should execute.
 
-The worker uses `workspace-write`, disables network access, and does not allow interactive approval prompts. Its token is displayed once; create a new token if it is lost.
+The worker disables network access and interactive approval prompts. Repository-aware refinement and Epic breakout runs use a read-only sandbox; other column runs use `workspace-write`. Its token is displayed once; create a new token if it is lost.

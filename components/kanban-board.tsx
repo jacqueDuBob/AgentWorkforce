@@ -10,7 +10,7 @@ import { COLUMNS, type ColumnId, type GitHubRepository, type Ticket, type Ticket
 import { loadTickets, persistTicket, persistTickets, removeTicket } from "@/lib/ticket-store";
 import { TicketForm } from "./ticket-form";
 import { ColumnSetup } from "./column-setup";
-import { loadColumnAgents, queueAgentRun, saveColumnAgent } from "@/lib/agent-store";
+import { loadAgentRun, loadColumnAgents, queueAgentRun, saveColumnAgent } from "@/lib/agent-store";
 import type { ColumnAgent } from "@/lib/agent-types";
 import { RepositorySetup } from "./repository-setup";
 import { addRepository, deleteRepository, loadRepositories } from "@/lib/repository-store";
@@ -33,6 +33,20 @@ async function authenticatedHeaders() {
   const token = data.session?.access_token;
   if (!token) throw new Error("Your session has expired. Please sign in again.");
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
+
+async function waitForBreakout(runId: string): Promise<{ children: ProposedChild[] }> {
+  for (;;) {
+    const run = await loadAgentRun(runId);
+    if (!run) throw new Error("The Epic breakout run could not be found.");
+    if (run.status === "finished") {
+      if (run.error) throw new Error(run.error);
+      const result = run.output?.result as { children?: ProposedChild[] } | undefined;
+      if (!result?.children) throw new Error("The Codex worker did not return a structured breakout result.");
+      return { children: result.children };
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+  }
 }
 
 function Card({ ticket, agent, overlay = false, dragDisabled = false, onEdit, onDelete, onRun, onForceBreakout }: { ticket: Ticket; agent?: ColumnAgent; overlay?: boolean; dragDisabled?: boolean; onEdit?: () => void; onDelete?: () => void; onRun?: () => void; onForceBreakout?: () => void }) {
@@ -152,8 +166,9 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       await persistTicket(epic);
       setTickets((current) => current.map((item) => item.id === epic.id ? epic : item));
       const response = await fetch("/api/epic-breakout", { method: "POST", headers: await authenticatedHeaders(), body: JSON.stringify({ epicId: epic.id, domain }) });
-      const proposal = await response.json() as { children?: ProposedChild[]; error?: string };
-      if (!response.ok || !proposal.children) throw new Error(proposal.error || "The breakout agent did not return child items.");
+      const queued = await response.json() as { runId?: string; error?: string };
+      if (!response.ok || !queued.runId) throw new Error(queued.error || "The breakout agent could not be queued.");
+      const proposal = await waitForBreakout(queued.runId);
       const created: Ticket[] = []; const failed: Array<{ title: string; error: string }> = [];
       for (const child of proposal.children) {
         const now = new Date().toISOString();

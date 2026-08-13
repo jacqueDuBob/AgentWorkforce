@@ -42,6 +42,16 @@ const rewriteSchema = {
   },
 };
 
+const breakoutSchema = {
+  type: "object", additionalProperties: false, required: ["children"], properties: { children: {
+    type: "array", minItems: 2, maxItems: 12, items: { type: "object", additionalProperties: false,
+      required: ["title", "description", "acceptanceCriteria", "priority", "tags"], properties: {
+        title: { type: "string" }, description: { type: "string" }, acceptanceCriteria: { type: "array", items: { type: "string" } },
+        priority: { type: "string", enum: ["Low", "Medium", "High", "Urgent"] }, tags: { type: "array", maxItems: 3, items: { type: "string" } },
+      } },
+  } },
+};
+
 async function request(endpoint, init = {}) {
   const response = await fetch(`${appUrl}${endpoint}`, {
     ...init,
@@ -66,13 +76,14 @@ async function execute(job) {
   const thread = codex.startThread({
     model: job.run.modelName || undefined,
     workingDirectory,
-    sandboxMode: job.run.kind.startsWith("refinement_") ? "read-only" : "workspace-write",
+    sandboxMode: job.run.kind.startsWith("refinement_") || job.run.kind === "epic_breakout" ? "read-only" : "workspace-write",
     approvalPolicy: "never",
     networkAccessEnabled: false,
   });
   if (!job.run.renderedPrompt?.trim()) throw new Error("The queued run does not contain a rendered prompt snapshot.");
   const schema = job.run.kind === "refinement_questions" ? questionSchema
-    : job.run.kind === "refinement_rewrite" ? rewriteSchema : undefined;
+    : job.run.kind === "refinement_rewrite" ? rewriteSchema
+    : job.run.kind === "epic_breakout" ? breakoutSchema : undefined;
   const turn = await thread.run(job.run.renderedPrompt, schema ? { outputSchema: schema } : undefined);
   if (schema) await finish(job.run.id, { result: JSON.parse(turn.finalResponse), threadId: thread.id });
   else await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id });
