@@ -21,11 +21,10 @@ The app requires a Supabase project for authentication and board storage:
 8. Run `supabase/migrations/008_epic_breakout_sessions.sql` to add Epic recommendations, breakout-session history, and draft child-ticket relationships.
 9. Run `supabase/migrations/009_local_codex_workers.sql` to add secure local-worker credentials and claims.
 10. Run `supabase/migrations/010_database_prompt_templates.sql` to store all agent prompts in the database and snapshot rendered queue prompts.
-11. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
-12. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
-13. Restart the development server and create your first account.
-
-To use the interactive refinement agent, also set `OPENAI_API_KEY` in `.env.local`. Models and prompts are selected from the relevant `column_agents` row.
+11. Run `supabase/migrations/011_codex_refinement_runs.sql` to add prioritized, repository-aware Codex refinement jobs.
+12. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
+13. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+14. Restart the development server and create your first account.
 
 ## Deploy to Vercel
 
@@ -41,7 +40,7 @@ Add repositories once through **GitHub repositories** in the header menu, then s
 
 The Vercel app queues work in Supabase. A worker on your computer polls the Vercel API and runs the Codex SDK in the matching local Git checkout; local Codex authentication never leaves your computer.
 
-1. Apply migrations `009_local_codex_workers.sql` and `010_database_prompt_templates.sql` in Supabase.
+1. Apply migrations `009_local_codex_workers.sql`, `010_database_prompt_templates.sql`, and `011_codex_refinement_runs.sql` in Supabase.
 2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel and redeploy.
 3. In Flowboard, open the workspace menu and choose **Local Codex worker**.
 4. Create a worker token and copy the generated startup command.

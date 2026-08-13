@@ -19,15 +19,16 @@ export async function POST(request: Request) {
     if (ticketError) throw ticketError;
 
     let repository = null;
-    if (ticket.repository_id) {
+    const repositoryId = run.run_input?.repositoryId || ticket.repository_id;
+    if (repositoryId) {
       const { data, error } = await admin.from("github_repositories").select("*")
-        .eq("id", ticket.repository_id).eq("user_id", worker.user_id).single();
+        .eq("id", repositoryId).eq("user_id", worker.user_id).single();
       if (error) throw error;
       repository = data;
     }
 
     return NextResponse.json({
-      run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, input: run.output, renderedPrompt: run.rendered_prompt },
+      run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, kind: run.run_kind || "column", input: run.run_input, renderedPrompt: run.rendered_prompt },
       ticket: {
         id: ticket.id, title: ticket.title, description: ticket.description,
         acceptanceCriteria: ticket.acceptance_criteria_items, priority: ticket.priority,

@@ -89,19 +89,15 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     const agent = agents.find((item) => item.column === "In Refinement");
     if (!agent) throw new Error("The refinement agent is not configured.");
     if (repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(repositoryId)) throw new Error(`${agent.name} is not allowed to use the selected repository.`);
-    const { epicRecommendation, ...ticketRewrite } = rewrite;
-    const updated = { ...refining, ...ticketRewrite, acceptanceCriteria: rewrite.acceptanceCriteria.split(/\r?\n/).map((text) => text.trim()).filter(Boolean).map((text) => ({ id: crypto.randomUUID(), text, completed: false })), tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
+    const { epicRecommendation, technicalDesign, ...ticketRewrite } = rewrite;
+    const updated = { ...refining, ...ticketRewrite, description: `${rewrite.description}\n\n## Technical solution design\n\n${technicalDesign}`, acceptanceCriteria: rewrite.acceptanceCriteria.split(/\r?\n/).map((text) => text.trim()).filter(Boolean).map((text) => ({ id: crypto.randomUUID(), text, completed: false })), tags: rewrite.tags.slice(0, 3), repositoryId, baseBranch: repositories.find((repository) => repository.id === repositoryId)?.defaultBranch ?? "", updatedAt: new Date().toISOString() };
     await persistTickets(tickets.map((ticket) => ticket.id === updated.id ? updated : ticket));
-    const runContext = { refinement: { repositoryId, repositoryReason: proposal.repositoryReason, answers, rewrittenTicket: rewrite } };
-    const repository = repositories.find((item) => item.id === repositoryId);
-    const renderedPrompt = renderPromptTemplate(agent.instructions, { ticket: updated, repository, workspaceInstructions: masterInstructions, refinementAnswers: answers, runContext });
-    await queueAgentRun(updated.id, agent, "manual", renderedPrompt, runContext);
     setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
     if (epicRecommendation.recommended && updated.itemType !== "Epic") {
       const recommendation = await recommendEpic(updated.id, epicRecommendation.reason, agent.name);
       setBreakoutOutcome(undefined); setBreakoutError(""); setEpicCandidate({ ticket: updated, recommendation });
       setNotice(`“${updated.title}” was refined and recommended as an Epic.`);
-    } else setNotice(`“${updated.title}” was rewritten and ${agent.name} was queued.`);
+    } else setNotice(`“${updated.title}” was refined by ${agent.name}.`);
     setRefining(undefined);
   };
   const dragStart = (event: DragStartEvent) => setActive(tickets.find((t) => t.id === event.active.id));

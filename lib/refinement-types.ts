@@ -22,6 +22,7 @@ export interface RefinedTicketContent {
   acceptanceCriteria: string;
   priority: "Low" | "Medium" | "High" | "Urgent";
   tags: string[];
+  technicalDesign: string;
   epicRecommendation: {
     recommended: boolean;
     reason: string;

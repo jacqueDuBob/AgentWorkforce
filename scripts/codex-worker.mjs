@@ -20,6 +20,28 @@ const repositories = repositoryMap();
 const codex = new Codex();
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+const questionSchema = {
+  type: "object", additionalProperties: false, required: ["repositoryId", "repositoryReason", "questions"],
+  properties: {
+    repositoryId: { type: "string" }, repositoryReason: { type: "string" },
+    questions: { type: "array", minItems: 5, maxItems: 10, items: { type: "object", additionalProperties: false,
+      required: ["id", "question", "suggestions"], properties: { id: { type: "string" }, question: { type: "string" },
+        suggestions: { type: "array", minItems: 3, maxItems: 3, items: { type: "string" } } } } },
+  },
+};
+
+const rewriteSchema = {
+  type: "object", additionalProperties: false,
+  required: ["title", "description", "acceptanceCriteria", "priority", "tags", "technicalDesign", "epicRecommendation"],
+  properties: {
+    title: { type: "string" }, description: { type: "string" }, acceptanceCriteria: { type: "string" },
+    priority: { type: "string", enum: ["Low", "Medium", "High", "Urgent"] },
+    tags: { type: "array", maxItems: 3, items: { type: "string" } }, technicalDesign: { type: "string" },
+    epicRecommendation: { type: "object", additionalProperties: false, required: ["recommended", "reason"],
+      properties: { recommended: { type: "boolean" }, reason: { type: "string" } } },
+  },
+};
+
 async function request(endpoint, init = {}) {
   const response = await fetch(`${appUrl}${endpoint}`, {
     ...init,
@@ -44,13 +66,16 @@ async function execute(job) {
   const thread = codex.startThread({
     model: job.run.modelName || undefined,
     workingDirectory,
-    sandboxMode: "workspace-write",
+    sandboxMode: job.run.kind.startsWith("refinement_") ? "read-only" : "workspace-write",
     approvalPolicy: "never",
     networkAccessEnabled: false,
   });
   if (!job.run.renderedPrompt?.trim()) throw new Error("The queued run does not contain a rendered prompt snapshot.");
-  const turn = await thread.run(job.run.renderedPrompt);
-  await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id });
+  const schema = job.run.kind === "refinement_questions" ? questionSchema
+    : job.run.kind === "refinement_rewrite" ? rewriteSchema : undefined;
+  const turn = await thread.run(job.run.renderedPrompt, schema ? { outputSchema: schema } : undefined);
+  if (schema) await finish(job.run.id, { result: JSON.parse(turn.finalResponse), threadId: thread.id });
+  else await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id });
   console.log(`[finished] ${job.ticket.title}`);
 }
 

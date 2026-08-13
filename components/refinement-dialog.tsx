@@ -6,12 +6,28 @@ import type { ColumnAgent } from "@/lib/agent-types";
 import type { RefinedTicketContent, RefinementAnswer, RefinementProposal } from "@/lib/refinement-types";
 import type { GitHubRepository, Ticket } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
+import { loadAgentRun } from "@/lib/agent-store";
 
 async function authenticatedHeaders() {
   const { data } = await supabase!.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error("Your session has expired. Please sign in again.");
   return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
+
+async function waitForResult<T>(runId: string, signal: AbortSignal): Promise<T> {
+  while (!signal.aborted) {
+    const run = await loadAgentRun(runId);
+    if (!run) throw new Error("The refinement run could not be found.");
+    if (run.status === "finished") {
+      if (run.error) throw new Error(run.error);
+      const result = run.output?.result;
+      if (!result) throw new Error("The Codex worker did not return a structured refinement result.");
+      return result as T;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1500));
+  }
+  throw new DOMException("Aborted", "AbortError");
 }
 
 export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmit }: {
@@ -36,9 +52,9 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
       method: "POST", signal: controller.signal, headers,
       body: JSON.stringify({ ticketId: ticket.id, repositoryId }),
     })).then(async (response) => {
-      const data = await response.json() as RefinementProposal & { error?: string };
-      if (!response.ok) throw new Error(data.error || "Could not start the refinement agent.");
-      setProposal(data);
+      const queued = await response.json() as { runId?: string; error?: string };
+      if (!response.ok || !queued.runId) throw new Error(queued.error || "Could not queue the refinement agent.");
+      setProposal(await waitForResult<RefinementProposal>(queued.runId, controller.signal));
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Could not start the refinement agent.");
     });
@@ -57,9 +73,10 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
     setSubmitting(true); setError("");
     try {
       const completedAnswers = proposal.questions.map((question) => ({ questionId: question.id, question: question.question, answer: answers[question.id].trim() }));
-      const response = await fetch("/api/refinement", { method: "POST", headers: await authenticatedHeaders(), body: JSON.stringify({ action: "rewrite", ticketId: ticket.id, repositoryId, answers: completedAnswers }) });
-      const rewrite = await response.json() as RefinedTicketContent & { error?: string };
-      if (!response.ok) throw new Error(rewrite.error || "The refinement agent could not rewrite the ticket.");
+      const response = await fetch("/api/refinement", { method: "POST", headers: await authenticatedHeaders(), body: JSON.stringify({ action: "rewrite", ticketId: ticket.id, repositoryId, proposal, answers: completedAnswers }) });
+      const queued = await response.json() as { runId?: string; error?: string };
+      if (!response.ok || !queued.runId) throw new Error(queued.error || "The refinement rewrite could not be queued.");
+      const rewrite = await waitForResult<RefinedTicketContent>(queued.runId, new AbortController().signal);
       await onSubmit(repositoryId, proposal, completedAnswers, rewrite);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The refinement could not be submitted."); }
     finally { setSubmitting(false); }
@@ -69,7 +86,7 @@ export function RefinementDialog({ ticket, agent, repositories, onClose, onSubmi
     <section className="refinement-dialog" role="dialog" aria-modal="true" aria-labelledby="refinement-title" onMouseDown={(event) => event.stopPropagation()}>
       <header className="refinement-header"><span><Bot size={20}/></span><div><p className="eyebrow">{agent.name}</p><h2 id="refinement-title">Refine “{ticket.title}”</h2></div><button className="icon-button" onClick={onClose} aria-label="Close"><X size={19}/></button></header>
       {!started && <div className="refinement-body refinement-repository-step"><p className="eyebrow">Repository context</p><h3>Select the repository to inspect</h3><p>The refinement agent will use this repository as the technical context for its questions and solution design.</p><label>Repository<select value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)}><option value="">Select a repository…</option>{repositories.map((repository) => <option key={repository.id} value={repository.id}>{repository.owner}/{repository.name}</option>)}</select></label>{repositories.length === 0 && <div className="error-banner">No repository is available to this agent. Add one or update its repository access first.</div>}</div>}
-      {loading && <div className="refinement-loading"><Sparkles size={20}/><strong>Analysing the ticket…</strong><span>Classifying the repository and finding the most useful questions.</span></div>}
+      {loading && <div className="refinement-loading"><Sparkles size={20}/><strong>Codex is inspecting the repository…</strong><span>The interactive run may wait briefly if the local worker is busy.</span></div>}
       {error && <div className="error-banner refinement-error">{error}</div>}
       {proposal && <div className="refinement-body">
         <section className="repository-classification"><div><p className="eyebrow">Repository context</p><strong>{proposal.repositoryReason}</strong></div><strong>{repositories.find((repository) => repository.id === repositoryId)?.owner}/{repositories.find((repository) => repository.id === repositoryId)?.name}</strong></section>

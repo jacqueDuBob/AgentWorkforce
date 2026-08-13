@@ -80,3 +80,16 @@ export async function loadAgentRuns(): Promise<AgentRun[]> {
     startedAt: row.started_at ?? undefined, finishedAt: row.finished_at ?? undefined,
   }));
 }
+
+export async function loadAgentRun(id: string): Promise<AgentRun | undefined> {
+  if (!supabase) return undefined;
+  await ensureSupabaseSession();
+  const { data: row, error } = await supabase.from("agent_runs").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return row ? {
+    id: row.id, ticketId: row.ticket_id, column: row.column_name, agentName: row.agent_name,
+    modelName: row.model_name ?? "", renderedPrompt: row.rendered_prompt ?? "", trigger: row.trigger_type, status: row.status,
+    output: row.output ?? undefined, error: row.error ?? "", createdAt: row.created_at, updatedAt: row.updated_at,
+    startedAt: row.started_at ?? undefined, finishedAt: row.finished_at ?? undefined,
+  } : undefined;
+}
