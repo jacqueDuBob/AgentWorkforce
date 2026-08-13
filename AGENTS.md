@@ -131,6 +131,9 @@ considered, and setup or behavior documentation is current. Report changed files
 verification results, important assumptions, and any remaining risk or unverified
 step; do not hide known task-related issues.
 
+Always include a concise suggested commit message in the final report that explains
+the completed changes. Do not create the commit unless the user explicitly asks.
+
 ## Maintaining This File
 
 Keep this file as durable repository policy, not task memory. Add a rule only when
