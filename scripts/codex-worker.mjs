@@ -1,6 +1,8 @@
 import { Codex } from "@openai/codex-sdk";
+import { execFile } from "node:child_process";
 import { access } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 
 const appUrl = (process.env.FLOWBOARD_URL || "").replace(/\/$/, "");
 const workerToken = process.env.FLOWBOARD_WORKER_TOKEN || "";
@@ -18,6 +20,7 @@ if (!appUrl || !workerToken) {
 
 const repositories = repositoryMap();
 const codex = new Codex();
+const execFileAsync = promisify(execFile);
 const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 const questionSchema = {
@@ -53,10 +56,9 @@ const breakoutSchema = {
 };
 
 const reviewSchema = {
-  type: "object", additionalProperties: false, required: ["findings", "gitPushSucceeded", "summary"],
+  type: "object", additionalProperties: false, required: ["findings", "summary"],
   properties: {
     findings: { type: "array", items: { type: "string" } },
-    gitPushSucceeded: { type: "boolean" },
     summary: { type: "string" },
   },
 };
@@ -85,12 +87,50 @@ function reportsSuccessfulGitPush(response) {
   return /(?:^|\\n)GIT_PUSH_SUCCEEDED\\s*:\s*true(?:\\n|$)/i.test(response || "");
 }
 
+async function git(workingDirectory, args) {
+  const { stdout } = await execFileAsync("git", args, { cwd: workingDirectory });
+  return stdout.trim();
+}
+
+async function prepareGitWorkspace(job, workingDirectory) {
+  if (job.run.kind !== "column") return;
+  const currentBranch = await git(workingDirectory, ["branch", "--show-current"]);
+  const baseBranch = job.ticket.baseBranch || job.repository.defaultBranch;
+  if (!baseBranch) throw new Error("The ticket does not specify a base branch.");
+
+  if (job.run.column === "In Work" && !job.ticket.findings?.trim()) {
+    const status = await git(workingDirectory, ["status", "--porcelain"]);
+    if (status) throw new Error("The repository has uncommitted changes; refusing to start a new ticket branch.");
+    const ticketBranch = `flowboard/${job.ticket.id}`;
+    const existingBranch = await git(workingDirectory, ["branch", "--list", ticketBranch]);
+    await git(workingDirectory, ["switch", baseBranch]);
+    await git(workingDirectory, existingBranch ? ["switch", ticketBranch] : ["switch", "-c", ticketBranch]);
+    return;
+  }
+
+  if ((job.run.column === "In Work" || job.run.column === "In Review") && (!currentBranch || currentBranch === baseBranch)) {
+    throw new Error(`The ${job.run.column} run requires an existing non-base ticket branch.`);
+  }
+}
+
+async function commitAndPushReview(job, workingDirectory) {
+  const baseBranch = job.ticket.baseBranch || job.repository.defaultBranch;
+  const currentBranch = await git(workingDirectory, ["branch", "--show-current"]);
+  if (!currentBranch || currentBranch === baseBranch) throw new Error("Refusing to commit or push the configured base branch.");
+  await git(workingDirectory, ["add", "--all"]);
+  const stagedFiles = await git(workingDirectory, ["diff", "--cached", "--name-only"]);
+  if (!stagedFiles) throw new Error("The clean review has no changes to commit.");
+  await git(workingDirectory, ["commit", "-m", job.ticket.title]);
+  await git(workingDirectory, ["push", "--set-upstream", "origin", "HEAD"]);
+}
+
 async function execute(job) {
   const repositoryKey = job.repository ? `${job.repository.owner}/${job.repository.name}` : "";
   const configuredPath = repositoryKey ? repositories[repositoryKey] : "";
   if (!configuredPath) throw new Error(`No local path configured for repository ${repositoryKey || "(none)"}.`);
   const workingDirectory = path.resolve(configuredPath);
   await access(path.join(workingDirectory, ".git"));
+  await prepareGitWorkspace(job, workingDirectory);
   const thread = codex.startThread({
     model: job.run.modelName || undefined,
     workingDirectory,
@@ -106,7 +146,13 @@ async function execute(job) {
   const turn = await thread.run(job.run.renderedPrompt, schema ? { outputSchema: schema } : undefined);
   if (schema) {
     const result = JSON.parse(turn.finalResponse);
-    await finish(job.run.id, { result, threadId: thread.id, gitPushSucceeded: job.run.column === "In Review" && result.gitPushSucceeded === true });
+    let gitPushSucceeded = false;
+    if (job.run.column === "In Review" && Array.isArray(result.findings) && result.findings.length === 0) {
+      await commitAndPushReview(job, workingDirectory);
+      gitPushSucceeded = true;
+    }
+    if (job.run.column === "In Review") result.gitPushSucceeded = gitPushSucceeded;
+    await finish(job.run.id, { result, threadId: thread.id, gitPushSucceeded });
   }
   else await finish(job.run.id, { finalResponse: turn.finalResponse, threadId: thread.id, gitPushSucceeded: reportsSuccessfulGitPush(turn.finalResponse) });
   console.log(`[finished] ${job.ticket.title}`);
