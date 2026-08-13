@@ -28,6 +28,23 @@ export async function recommendEpic(ticketId: string, reason: string, recommende
   return recommendation;
 }
 
+export async function dismissEpicRecommendation(recommendation: EpicRecommendation): Promise<void> {
+  if (supabase) {
+    await ensureSupabaseSession();
+    const { data, error } = await supabase.from("epic_recommendations").update({ status: "dismissed" })
+      .eq("id", recommendation.id).eq("ticket_id", recommendation.ticketId).eq("status", "pending")
+      .select("id").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("The pending Epic recommendation could not be found.");
+    return;
+  }
+  const recommendations = read<EpicRecommendation>(RECOMMENDATIONS_KEY);
+  if (!recommendations.some((item) => item.id === recommendation.id && item.ticketId === recommendation.ticketId && item.status === "pending")) {
+    throw new Error("The pending Epic recommendation could not be found.");
+  }
+  write(RECOMMENDATIONS_KEY, recommendations.map((item) => item.id === recommendation.id ? { ...item, status: "dismissed" as const } : item));
+}
+
 export async function confirmEpicRecommendation(ticket: Ticket, recommendation: EpicRecommendation, requesterEmail: string, agent: { name: string; modelName: string }, domain: string): Promise<{ epic: Ticket; session: BreakoutSession }> {
   if (supabase) {
     await ensureSupabaseSession();

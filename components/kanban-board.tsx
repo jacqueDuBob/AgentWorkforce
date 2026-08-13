@@ -19,7 +19,7 @@ import type { RefinedTicketContent, RefinementAnswer, RefinementProposal } from 
 import { WorkspaceInstructions } from "./workspace-instructions";
 import { loadMasterInstructions, saveMasterInstructions } from "@/lib/workspace-store";
 import { QueueDialog } from "./queue-dialog";
-import { completeBreakoutSession, confirmEpicRecommendation, recommendEpic, startEpicBreakout } from "@/lib/epic-store";
+import { completeBreakoutSession, confirmEpicRecommendation, dismissEpicRecommendation, recommendEpic, startEpicBreakout } from "@/lib/epic-store";
 import { EpicBreakoutDialog, type BreakoutOutcome } from "./epic-breakout-dialog";
 import type { EpicRecommendation, ProposedChild } from "@/lib/types";
 import { LocalWorkerSetup } from "./local-worker-setup";
@@ -87,7 +87,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   const [role, setRole] = useState<UserRole>("user");
   const [queueOpen, setQueueOpen] = useState(false); const [workerOpen, setWorkerOpen] = useState(false);
   const [epicCandidate, setEpicCandidate] = useState<{ ticket: Ticket; recommendation?: EpicRecommendation; forced?: boolean }>();
-  const [breakoutRunning, setBreakoutRunning] = useState(false); const [breakoutOutcome, setBreakoutOutcome] = useState<BreakoutOutcome>(); const [breakoutError, setBreakoutError] = useState("");
+  const [breakoutRunning, setBreakoutRunning] = useState(false); const [recommendationDismissing, setRecommendationDismissing] = useState(false); const [breakoutOutcome, setBreakoutOutcome] = useState<BreakoutOutcome>(); const [breakoutError, setBreakoutError] = useState("");
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -188,6 +188,17 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     finally { setBreakoutRunning(false); }
   };
   const confirmAndRunBreakout = async () => { if (epicCandidate) await runBreakout(epicCandidate.ticket, epicCandidate.forced); };
+  const dismissRecommendation = async () => {
+    if (!epicCandidate?.recommendation) return;
+    setRecommendationDismissing(true); setBreakoutError("");
+    try {
+      await dismissEpicRecommendation(epicCandidate.recommendation);
+      setNotice(`Epic recommendation for “${epicCandidate.ticket.title}” was rejected.`);
+      setEpicCandidate(undefined);
+    } catch (cause) {
+      setBreakoutError(cause instanceof Error ? cause.message : "The Epic recommendation could not be rejected.");
+    } finally { setRecommendationDismissing(false); }
+  };
   const openForcedBreakout = (ticket: Ticket) => {
     setBreakoutOutcome(undefined); setBreakoutError("");
     setEpicCandidate({ ticket, forced: true });
@@ -213,9 +224,10 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       forced={epicCandidate.forced}
       agentName={repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.name ? `${repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.name} Breakout Agent` : "Application Breakout Agent"}
       domain={repositories.find((item) => item.id === epicCandidate.ticket.repositoryId) ? `${repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.owner}/${repositories.find((item) => item.id === epicCandidate.ticket.repositoryId)?.name}` : "workspace application"}
-      running={breakoutRunning} outcome={breakoutOutcome} error={breakoutError}
+      running={breakoutRunning} dismissing={recommendationDismissing} outcome={breakoutOutcome} error={breakoutError}
       onClose={() => { setEpicCandidate(undefined); setBreakoutOutcome(undefined); setBreakoutError(""); }}
       onConfirm={() => void confirmAndRunBreakout()}
+      onDismiss={() => void dismissRecommendation()}
     />}
     {refining && agents.find((agent) => agent.column === "In Refinement") && <RefinementDialog
       key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "In Refinement")!}
