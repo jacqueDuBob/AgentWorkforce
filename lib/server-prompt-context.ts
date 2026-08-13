@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "./supabase-admin";
 export async function loadRefinementPromptContext(userId: string) {
   const admin = getSupabaseAdmin();
   const [{ data: agent, error: agentError }, { data: settings }, { data: repositories, error: repositoriesError }] = await Promise.all([
-    admin.from("column_agents").select("*").eq("user_id", userId).eq("column_name", "In Refinement").single(),
+    admin.from("column_agents").select("*").eq("column_name", "In Refinement").single(),
     admin.from("workspace_settings").select("master_instructions").eq("user_id", userId).maybeSingle(),
     admin.from("github_repositories").select("id,owner,name,default_branch").eq("user_id", userId).order("owner").order("name"),
   ]);
@@ -15,7 +15,7 @@ export async function loadRefinementPromptContext(userId: string) {
   let allowedRepositories = repositories ?? [];
   if (agent.repository_access === "selected") {
     const { data: permissions, error } = await admin.from("column_agent_repositories")
-      .select("repository_id").eq("user_id", userId).eq("column_agent_id", agent.id);
+      .select("repository_id").eq("column_agent_id", agent.id);
     if (error) throw error;
     const allowedIds = new Set((permissions ?? []).map((item) => item.repository_id));
     allowedRepositories = allowedRepositories.filter((repository) => allowedIds.has(repository.id));

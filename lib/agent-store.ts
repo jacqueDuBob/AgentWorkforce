@@ -20,13 +20,23 @@ export async function loadColumnAgents(): Promise<ColumnAgent[]> {
   });
 }
 
+export type UserRole = "admin" | "user";
+
+export async function loadCurrentUserRole(): Promise<UserRole> {
+  if (!supabase) return "user";
+  const session = await ensureSupabaseSession();
+  const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id).single();
+  if (error) throw error;
+  return data.role === "admin" ? "admin" : "user";
+}
+
 export async function saveColumnAgent(agent: ColumnAgent) {
   if (!supabase) return;
   await ensureSupabaseSession();
   const { data, error } = await supabase.from("column_agents").upsert({ column_name: agent.column, name: agent.name, model_name: agent.modelName, instructions: agent.instructions,
     refinement_questions_prompt: agent.refinementQuestionsPrompt, refinement_rewrite_prompt: agent.refinementRewritePrompt,
     epic_breakout_prompt: agent.epicBreakoutPrompt, start_mode: agent.startMode, enabled: agent.enabled,
-    repository_access: agent.repositoryAccess }, { onConflict: "user_id,column_name" }).select("id").single();
+    repository_access: agent.repositoryAccess }, { onConflict: "column_name" }).select("id").single();
   if (error) throw error;
   const agentId = data.id;
   const { error: deleteError } = await supabase.from("column_agent_repositories").delete().eq("column_agent_id", agentId);

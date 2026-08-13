@@ -31,7 +31,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (sourceRun.column_name === "In Work") {
         const [{ data: ticket, error: ticketError }, { data: agent, error: agentError }, { data: settings }] = await Promise.all([
           admin.from("tickets").select("*").eq("id", sourceRun.ticket_id).eq("user_id", worker.user_id).single(),
-          admin.from("column_agents").select("*").eq("user_id", worker.user_id).eq("column_name", "In Deployment").maybeSingle(),
+          admin.from("column_agents").select("*").eq("column_name", "In Deployment").maybeSingle(),
           admin.from("workspace_settings").select("master_instructions").eq("user_id", worker.user_id).maybeSingle(),
         ]);
         if (ticketError) throw ticketError;
