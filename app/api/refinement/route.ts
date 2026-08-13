@@ -7,6 +7,7 @@ import { loadRefinementPromptContext, serializeRepositories } from "@/lib/server
 interface RefinementRequest {
   action?: "questions" | "rewrite";
   ticketId: string;
+  repositoryId?: string;
   answers?: RefinementAnswer[];
 }
 
@@ -64,11 +65,13 @@ export async function POST(request: Request) {
       .eq("id", body.ticketId).eq("user_id", user.id).single();
     if (ticketError) throw ticketError;
     const repositories = serializeRepositories(context.repositories);
+    const selectedRepository = repositories.find((repository) => repository.id === body.repositoryId);
+    if (!selectedRepository) return NextResponse.json({ error: "Select a repository available to the refinement agent." }, { status: 400 });
     const template = rewriting ? context.agent.refinement_rewrite_prompt : context.agent.refinement_questions_prompt;
-    const prompt = renderPromptTemplate(template, {
-      ticket, repository: repositories, workspaceInstructions: context.masterInstructions,
+    const prompt = `${renderPromptTemplate(template, {
+      ticket, repository: selectedRepository, workspaceInstructions: context.masterInstructions,
       refinementAnswers: body.answers, agentName: context.agent.name,
-    });
+    })}\n\nThe repository was selected by the user. Use repositoryId ${selectedRepository.id} and do not classify or substitute another repository.`;
     const modelName = context.agent.model_name;
     if (!/^[a-zA-Z0-9._:-]{1,100}$/.test(modelName)) throw new Error("The refinement agent model is invalid.");
 
@@ -83,8 +86,7 @@ export async function POST(request: Request) {
     if (!response.ok || !outputText) return NextResponse.json({ error: result.error?.message || "The refinement agent did not return a result." }, { status: 502 });
     if (rewriting) return NextResponse.json(JSON.parse(outputText) as RefinedTicketContent);
     const proposal = JSON.parse(outputText) as RefinementProposal;
-    const repositoryIds = new Set(repositories.map((repository) => repository.id));
-    if (proposal.repositoryId && !repositoryIds.has(proposal.repositoryId)) proposal.repositoryId = "";
+    proposal.repositoryId = selectedRepository.id;
     return NextResponse.json(proposal);
   } catch (cause) {
     const message = cause instanceof SyntaxError ? "The refinement result could not be read."

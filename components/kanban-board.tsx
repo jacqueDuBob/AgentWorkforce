@@ -199,6 +199,9 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       onClose={() => { setEpicCandidate(undefined); setBreakoutOutcome(undefined); setBreakoutError(""); }}
       onConfirm={() => void confirmAndRunBreakout()}
     />}
-    {refining && agents.find((agent) => agent.column === "In Refinement") && <RefinementDialog key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "In Refinement")!} repositories={repositories.filter((repository) => { const agent = agents.find((item) => item.column === "In Refinement"); return !agent || agent.repositoryAccess === "all" || agent.allowedRepositoryIds.includes(repository.id); })} masterInstructions={masterInstructions} onClose={() => setRefining(undefined)} onSubmit={submitRefinement}/>}
+    {refining && agents.find((agent) => agent.column === "In Refinement") && <RefinementDialog
+      key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "In Refinement")!}
+      repositories={repositories.filter((repository) => { const agent = agents.find((item) => item.column === "In Refinement"); return !agent || agent.repositoryAccess === "all" || agent.allowedRepositoryIds.includes(repository.id); })}
+      onClose={() => setRefining(undefined)} onSubmit={submitRefinement}/>}
   </main>;
 }
