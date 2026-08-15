@@ -27,8 +27,12 @@ export async function POST(request: Request) {
       repository = data;
     }
 
+    const resumeContext = Array.isArray(run.resume_context) ? run.resume_context : [];
+    const renderedPrompt = resumeContext.length
+      ? `${run.rendered_prompt}\n\nResolved agent questions (use these answers to continue the work):\n${JSON.stringify(resumeContext)}`
+      : run.rendered_prompt;
     return NextResponse.json({
-      run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, kind: run.run_kind || "column", input: run.run_input, renderedPrompt: run.rendered_prompt },
+      run: { id: run.id, modelName: run.model_name, column: run.column_name, agentName: run.agent_name, kind: run.run_kind || "column", input: run.run_input, renderedPrompt },
       ticket: {
         id: ticket.id, title: ticket.title, description: ticket.description, findings: ticket.findings ?? "",
         acceptanceCriteria: ticket.acceptance_criteria_items, priority: ticket.priority,
