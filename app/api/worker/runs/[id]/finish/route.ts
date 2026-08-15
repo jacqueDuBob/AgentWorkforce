@@ -28,9 +28,37 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (reviewFindings?.length && body.gitPushSucceeded) return NextResponse.json({ error: "A review with findings cannot report a successful git push." }, { status: 400 });
     if (reviewFindings && !reviewFindings.length && !body.gitPushSucceeded) return NextResponse.json({ error: "A clean review must commit and push before it can finish successfully." }, { status: 400 });
 
-    const questions = !body.error && Array.isArray(body.result?.questions) ? body.result.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim())).map((item) => item.trim()) : [];
-    const proposals = !body.error && Array.isArray(body.result?.proposals) ? body.result.proposals.filter((item): item is { title: string; description: string; changes: Record<string, unknown> } => Boolean(item && typeof item === "object" && typeof (item as Record<string, unknown>).title === "string" && typeof (item as Record<string, unknown>).description === "string" && (item as Record<string, unknown>).changes && typeof (item as Record<string, unknown>).changes === "object" && !Array.isArray((item as Record<string, unknown>).changes))).slice(0, 10) : [];
+    const questions = !body.error && Array.isArray(body.result?.questions)
+      ? body.result.questions.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        .map((item) => item.trim()).filter((item) => item.length <= 2000).slice(0, 10)
+      : [];
+    const proposals = !body.error && Array.isArray(body.result?.proposals)
+      ? body.result.proposals.filter((item): item is { title: string; description: string; changes: Record<string, unknown> } => Boolean(item && typeof item === "object" && typeof (item as Record<string, unknown>).title === "string" && Boolean(((item as Record<string, unknown>).title as string).trim()) && typeof (item as Record<string, unknown>).description === "string" && (item as Record<string, unknown>).changes && typeof (item as Record<string, unknown>).changes === "object" && !Array.isArray((item as Record<string, unknown>).changes))).slice(0, 10) : [];
     const waiting = questions.length > 0;
+
+    // Persist collaboration records before releasing the run. If the run update
+    // fails, remove these records so a retry cannot leave an unowned question or
+    // proposal behind.
+    let insertedProposals = false;
+    try {
+      if (waiting) {
+        const { error: questionError } = await admin.from("agent_questions").insert(questions.map((question) => ({ ticket_id: sourceRun.ticket_id, run_id: id, question })));
+        if (questionError) throw questionError;
+      }
+      if (proposals.length) {
+        const supportedChanges = new Set(["title", "description", "priority", "tags", "assignee"]);
+        const { error: proposalError } = await admin.from("ticket_proposals").insert(proposals.map((proposal) => ({
+          ticket_id: sourceRun.ticket_id, run_id: id, title: proposal.title.trim(), description: proposal.description.trim(),
+          changes: Object.fromEntries(Object.entries(proposal.changes).filter(([key, value]) => supportedChanges.has(key) && value !== null)),
+        })));
+        if (proposalError) throw proposalError;
+        insertedProposals = true;
+      }
+    } catch (cause) {
+      await admin.from("agent_questions").delete().eq("run_id", id);
+      await admin.from("ticket_proposals").delete().eq("run_id", id);
+      throw cause;
+    }
 
     const { data, error } = await admin.from("agent_runs").update({
       status: waiting ? "waiting_for_answer" : "finished", finished_at: waiting ? null : new Date().toISOString(), updated_at: new Date().toISOString(),
@@ -39,22 +67,21 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         : body.finalResponse ? { finalResponse: body.finalResponse, threadId: body.threadId || null } : undefined,
       error: body.error || null,
     }).eq("id", id).eq("user_id", worker.user_id).eq("worker_id", worker.id).eq("status", "in_progress").select("id").maybeSingle();
-    if (error) throw error;
-    if (!data) return NextResponse.json({ error: "Active run not found." }, { status: 404 });
+    if (error || !data) {
+      await admin.from("agent_questions").delete().eq("run_id", id);
+      await admin.from("ticket_proposals").delete().eq("run_id", id);
+      if (error) throw error;
+      return NextResponse.json({ error: "Active run not found." }, { status: 404 });
+    }
 
     if (waiting) {
-      const { error: questionError } = await admin.from("agent_questions").insert(questions.map((question) => ({ ticket_id: sourceRun.ticket_id, run_id: id, question })));
-      if (questionError) throw questionError;
       await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "question", notification_title: "Agent question needs an answer", notification_body: questions[0] });
     }
-    if (proposals.length) {
-      const supportedChanges = new Set(["title", "description", "priority", "tags", "assignee"]);
-      const { error: proposalError } = await admin.from("ticket_proposals").insert(proposals.map((proposal) => ({
-        ticket_id: sourceRun.ticket_id, run_id: id, title: proposal.title.trim(), description: proposal.description.trim(),
-        changes: Object.fromEntries(Object.entries(proposal.changes).filter(([key, value]) => supportedChanges.has(key) && value !== null)),
-      })));
-      if (proposalError) throw proposalError;
+    if (insertedProposals) {
       await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "proposal", notification_title: "Approval needed for a proposed update", notification_body: proposals[0].title });
+    }
+    if (!waiting) {
+      await admin.rpc("notify_ticket_participants", { candidate_ticket_id: sourceRun.ticket_id, notification_kind: "execution", notification_title: body.error ? "Agent run failed" : "Agent run completed", notification_body: body.error || "The agent finished processing this ticket." });
     }
 
     if (reviewFindings) {
