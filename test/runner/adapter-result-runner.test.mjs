@@ -82,7 +82,7 @@ test("Runner disposes workspace after success", async () => {
     gitCapability: { prepare: async () => {} },
     agentAdapter: { invoke: async () => ({ provider: "codex", threadId: "thread", structured: true, finalResponse: JSON.stringify({ summary: "Done", questions: [], proposals: [] }) }) },
   });
-  await runner.execute(spec());
+  await runner.execute(spec("In Review"));
   assert.equal(disposed, 1);
   assert.equal(completed.length, 1);
 });
@@ -137,7 +137,7 @@ test("Runner executes the persisted verification snapshot instead of mutable dis
   let discovered = false;
   let executedPlan;
   const persistedJob = {
-    ...spec(), persisted: true,
+    ...spec("In Testing"), persisted: true,
     execution: { git: { mode: "prepare_ticket_branch" }, verificationPlan: { version: 1, checks: [{ id: "persisted" }], trustedPackageScripts: {} } },
   };
   const runner = new Runner({

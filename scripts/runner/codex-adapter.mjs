@@ -1,5 +1,6 @@
 import { Codex } from "@openai/codex-sdk";
 import { codexSandboxMode } from "./permissions.mjs";
+import { continuationForAdapter } from "./continuation.mjs";
 
 const questionSchema = {
   type: "object", additionalProperties: false, required: ["repositoryId", "repositoryReason", "questions"],
@@ -72,15 +73,27 @@ export class CodexDevelopmentAgentAdapter {
 
   async invoke(job, workspace) {
     if (!job.prompt?.trim()) throw new Error("The queued run does not contain a rendered prompt snapshot.");
-    const thread = this.codex.startThread({
+    const continuation = continuationForAdapter(job);
+    const options = {
       model: job.agent.model,
       workingDirectory: workspace.workingDirectory,
       sandboxMode: codexSandboxMode(job),
       approvalPolicy: job.permissions.approvalPolicy,
       networkAccessEnabled: job.permissions.networkAccess,
-    });
+    };
+    let thread; let resumed = false;
+    if (continuation.providerSession?.provider === this.id && continuation.providerSession.sessionId && typeof this.codex.resumeThread === "function") {
+      try { thread = this.codex.resumeThread(continuation.providerSession.sessionId, options); resumed = true; }
+      catch { thread = this.codex.startThread(options); }
+    } else thread = this.codex.startThread(options);
     const schema = outputSchemaFor(job);
-    const turn = await thread.run(job.prompt, schema ? { outputSchema: schema } : undefined);
+    let turn;
+    try { turn = await thread.run(continuation.prompt, schema ? { outputSchema: schema } : undefined); }
+    catch (cause) {
+      if (!resumed) throw cause;
+      thread = this.codex.startThread(options);
+      turn = await thread.run(continuation.prompt, schema ? { outputSchema: schema } : undefined);
+    }
     return { provider: this.id, threadId: thread.id, finalResponse: turn.finalResponse, structured: Boolean(schema) };
   }
 }

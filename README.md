@@ -24,12 +24,12 @@ The app requires a Supabase project for authentication and board storage:
 11. Run `supabase/migrations/011_codex_refinement_runs.sql` to add prioritized, repository-aware Codex refinement jobs.
 12. Run migrations `012_codex_epic_breakout_runs.sql` through `017_ticket_conversations_notifications.sql` in numerical order.
 13. If migration 014 was previously applied before migration 013, run `018_repair_deployment_and_worker_git.sql` instead of replaying migration 013 against the newer schema.
-14. Run `019_ticket_collaboration_hardening.sql`, then `020_persisted_job_contracts.sql` to centralize versioned job creation and canonical results.
+14. Run `019_ticket_collaboration_hardening.sql` through `024_repository_candidate_handoff.sql` in numerical order to add versioned jobs, leased attempts, suspended human-input rounds, and durable Git-native repository candidates.
 15. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
 16. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
 17. Restart the development server and create your first account.
 
-For an existing deployment, deploy the application code before applying migration 020. The server temporarily falls back to legacy-compatible queue rows when the new columns are absent; once migration 020 is applied, new rows automatically use immutable JobSpecs and browser-side run mutation is disabled.
+For an existing deployment, deploy the application code before applying migration 020. The server temporarily falls back to legacy-compatible queue rows when the new columns are absent; once migration 020 is applied, new rows automatically use immutable JobSpecs and browser-side run mutation is disabled. Apply migrations 021 and 022 together with the capability-advertising worker: workers from before Phase 2C are intentionally ineligible for leased jobs and receive an upgrade-required response instead of claiming work they cannot finish.
 
 ## Deploy to Vercel
 
@@ -47,7 +47,7 @@ The local worker creates a non-base ticket branch before the **In Work** agent i
 
 The Vercel app queues work in Supabase. A worker on your computer polls the Vercel API and runs the Codex SDK in the matching local Git checkout; local Codex authentication never leaves your computer.
 
-1. Apply all migrations through `015_review_findings_and_push.sql` in Supabase.
+1. Apply all migrations through `024_repository_candidate_handoff.sql` in Supabase.
 2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel and redeploy.
 3. In Flowboard, open the workspace menu and choose **Local Codex worker**.
 4. Create a worker token and copy the generated startup command.
@@ -60,6 +60,14 @@ FLOWBOARD_REPOSITORIES='{"jacqueDuBob/AgentWorkforce":"/Users/jakobdrees/AgentWo
 6. Run the copied command from this project directory. Leave the process running while agents should execute.
 
 The worker disables network access and interactive approval prompts. Repository-aware refinement, Epic breakout, and review runs use a read-only sandbox; development and other existing column runs retain `workspace-write`. Its token is displayed once; create a new token if it is lost.
+
+Each poll advertises the worker's supported contract versions, job types, agent adapters, workspace provider, repository allowlist, and runtime features. Compatible claims create a 90-second database-timed lease; the worker heartbeats every 30 seconds. Expired attempts retain their evidence and are retried only within the configured attempt limit. Completion requests are idempotent, and deployment creation is protected by a transactional outbox plus a database deduplication key.
+
+When an agent needs clarification, its attempt ends as `needs_input` and the logical job remains suspended. Structured questions and immutable answer events are shown in the ticket conversation. Submitting all answers makes the same job resumable; the next leased attempt receives an audited deterministic continuation snapshot and may optionally resume its provider session. Configure a scheduler to `POST /api/internal/runner-outbox` with `Authorization: Bearer $FLOWBOARD_OUTBOX_SECRET` so outbox delivery does not depend on worker polling; use a random secret of at least 32 characters.
+
+Development, Review, and Testing attempts use disposable Git worktrees. Successful Development verification is followed by a Runner-owned commit and non-force push to `flowboard/<ticket-id>`; the exact base SHA, candidate SHA, branch, changed files, predecessor, and publication evidence are persisted before completion. Review and Testing bind that candidate at claim time and reconstruct a fresh workspace at its exact SHA. Review remains read-only and reports findings against the persisted base-to-candidate diff. Apply migration 024 and deploy its worker/API changes together; pre-2E Review rows without a durable candidate fail explicitly instead of inspecting an unrelated checkout.
+
+Candidate commits include stable `Flowboard-Job` and `Flowboard-Attempt` trailers. Retrying publication within one attempt reuses the existing commit, candidate RPC retries return the row uniquely bound to that attempt, and completion retries do not republish Git state. Branch pushes are deliberately non-force, so a stale sibling commit cannot overwrite a newer candidate; the database additionally compares the attempt's assigned predecessor with the locked candidate head. A prolonged database outage after a successful push but before candidate persistence remains recoverable operational work and is never treated as authority to replace the recorded head.
 
 Development, review, and testing jobs run deterministic verification through the Runner. New jobs snapshot their exact server-owned verification plan when queued. Historical jobs without a persisted JobSpec retain legacy discovery of `lint`, `typecheck`/`type-check`, `test`, and `build` from committed `HEAD:package.json`. Checks run in a temporary source snapshot so generated files do not mutate the checkout. Review agents receive read-only repository access; deterministic review checks and Git operations remain Runner-owned.
 

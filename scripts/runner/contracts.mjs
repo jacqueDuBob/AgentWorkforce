@@ -42,9 +42,11 @@ export function createJobResult(job, values) {
       pushSucceeded: Boolean(values.gitPushSucceeded),
       branch: values.repository?.branch ?? "",
       changedFiles: Object.freeze([...(values.repository?.changedFiles ?? [])]),
+      candidate: values.candidate,
     }),
     checks,
     error: values.error,
+    inputRequest: values.inputRequest,
   });
 }
 

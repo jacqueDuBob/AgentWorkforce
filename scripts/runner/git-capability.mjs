@@ -8,10 +8,15 @@ export class GitCapability {
     return stdout.trim();
   }
 
-  async prepare(job, workingDirectory) {
+  async prepare(job, workingDirectory, workspace = {}) {
     const gitMode = job.persisted ? job.execution.git.mode
       : job.legacyKind === "column" ? (job.type === "development" ? "prepare_ticket_branch" : job.type === "review" ? "require_ticket_branch" : "none") : "none";
     if (gitMode === "none") return;
+    if (workspace.isolated) {
+      const actual = await this.git(workingDirectory, ["rev-parse", "HEAD"]);
+      if (job.repositoryCandidate?.candidateSha && actual !== job.repositoryCandidate.candidateSha) throw new Error("The isolated workspace did not check out the assigned candidate SHA.");
+      return;
+    }
     const currentBranch = await this.git(workingDirectory, ["branch", "--show-current"]);
     const baseBranch = job.ticket.baseBranch || job.repository?.defaultBranch;
     if (!baseBranch) throw new Error("The ticket does not specify a base branch.");
@@ -30,6 +35,34 @@ export class GitCapability {
       const label = job.persisted ? job.type : job.legacy.run.column;
       throw new Error(`The ${label} run requires an existing non-base ticket branch.`);
     }
+  }
+
+  async publishDevelopmentCandidate(job, workspace) {
+    const workingDirectory = workspace.workingDirectory;
+    const branch = workspace.branch || job.repositoryCandidate?.branch || `flowboard/${job.ticket.id}`;
+    const marker = `Flowboard-Attempt: ${job.attempt.id}`;
+    const currentMessage = await this.git(workingDirectory, ["log", "-1", "--format=%B"]);
+    let candidateSha;
+    if (currentMessage.includes(marker)) candidateSha = await this.git(workingDirectory, ["rev-parse", "HEAD"]);
+    else {
+      await this.git(workingDirectory, ["add", "--all"]);
+      const staged = await this.git(workingDirectory, ["diff", "--cached", "--name-only"]);
+      if (!staged) {
+        if (job.repositoryCandidate?.sourceJobId === job.id) candidateSha = job.repositoryCandidate.candidateSha;
+        else throw new Error("Development produced no changes for a durable candidate.");
+      } else {
+        await this.git(workingDirectory, ["commit", "-m", `${job.ticket.title}\n\nFlowboard-Job: ${job.id}\n${marker}`]);
+        candidateSha = await this.git(workingDirectory, ["rev-parse", "HEAD"]);
+      }
+    }
+    const changed = await this.git(workingDirectory, ["diff", "--name-only", `${workspace.baseSha}..${candidateSha}`]);
+    const remoteRef = `refs/heads/${branch}`;
+    await this.git(workingDirectory, ["push", "origin", `${candidateSha}:${remoteRef}`]);
+    return {
+      repositoryId: job.repository.id, branch, baseRef: workspace.baseRef, baseSha: workspace.baseSha, candidateSha,
+      changedFiles: changed.split(/\r?\n/).filter(Boolean), published: true, remoteRef,
+      sourceJobId: job.id, sourceAttemptId: job.attempt.id, predecessorCandidateId: job.repositoryCandidate?.id ?? null,
+    };
   }
 
   async commitAndPushReview(job, workingDirectory) {

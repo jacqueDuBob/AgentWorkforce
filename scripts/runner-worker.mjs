@@ -22,7 +22,7 @@ export function createRunnerWorker({ appUrl, workerToken, repositories, verifica
     jobSource,
     runner: new Runner({
       jobSource,
-      workspaceProvider: new LocalCheckoutWorkspaceProvider(repositories),
+      workspaceProvider: new LocalCheckoutWorkspaceProvider(repositories, { commandCapability }),
       gitCapability: new GitCapability(commandCapability),
       agentAdapter: new CodexDevelopmentAgentAdapter(codex),
       verificationPlanProvider: new VerificationPlanProvider(verificationPlans, { commandCapability }),
@@ -50,6 +50,10 @@ export async function runWorker(configuration) {
           console.log(`[finished] ${job.ticket.title}`);
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : "Local Codex run failed.";
+          if (cause?.name === "CompletionDeliveryError") {
+            console.error(`[completion-pending] ${job.ticket.title}: ${message}`);
+            continue;
+          }
           const canonicalResult = cause?.jobResult ?? createFailedJobResult(job, cause);
           const failure = classifyFailure(cause);
           await jobSource.complete(job.id, { attemptId: job.attempt?.id, completionId: randomUUID(), error: message, ...failure, resultVersion: canonicalResult.version, canonicalResult }).catch(() => {});

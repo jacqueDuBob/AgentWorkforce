@@ -1,5 +1,6 @@
 export const JOB_SPEC_VERSION = 1;
 export const JOB_RESULT_VERSION = 1;
+export const HUMAN_INPUT_REQUEST_VERSION = 1;
 export const JOB_TYPES = Object.freeze(["refinement", "development", "review", "testing", "epic_breakout", "deployment", "column"]);
 export const PERMISSION_PROFILES = Object.freeze(["repository_read", "repository_write"]);
 export const GIT_MODES = Object.freeze(["none", "prepare_ticket_branch", "require_ticket_branch"]);
@@ -146,7 +147,7 @@ export function parseJobResult(value) {
   if (value.version !== JOB_RESULT_VERSION) throw new Error(`Unsupported JobResult version: ${String(value.version)}.`);
   requiredString(value.jobId, "JobResult jobId");
   if (!JOB_TYPES.includes(value.jobType)) throw new Error("JobResult jobType is invalid.");
-  if (!["succeeded", "failed"].includes(value.outcome)) throw new Error("JobResult outcome is invalid.");
+  if (!["succeeded", "failed", "needs_input"].includes(value.outcome)) throw new Error("JobResult outcome is invalid.");
   if (!Array.isArray(value.checks)) throw new Error("JobResult checks must be an array.");
   for (const check of value.checks) {
     if (!isObject(check) || typeof check.id !== "string" || !Array.isArray(check.command)
@@ -157,7 +158,35 @@ export function parseJobResult(value) {
   if (!isObject(value.agent) || typeof value.agent.provider !== "string") throw new Error("JobResult agent metadata is invalid.");
   if (!isObject(value.git) || typeof value.git.pushSucceeded !== "boolean" || typeof value.git.branch !== "string"
     || !Array.isArray(value.git.changedFiles) || !value.git.changedFiles.every((file) => typeof file === "string")) throw new Error("JobResult Git metadata is invalid.");
-  return Object.freeze({ ...value, checks: Object.freeze(value.checks.map((check) => Object.freeze({ ...check, command: Object.freeze([...check.command]) }))) });
+  const candidate = value.git.candidate === undefined ? undefined : parseRepositoryCandidate(value.git.candidate);
+  const inputRequest = value.outcome === "needs_input" ? parseHumanInputRequest(value.inputRequest) : value.inputRequest;
+  return Object.freeze({ ...value, inputRequest, git: Object.freeze({ ...value.git, candidate }), checks: Object.freeze(value.checks.map((check) => Object.freeze({ ...check, command: Object.freeze([...check.command]) }))) });
+}
+
+export function parseRepositoryCandidate(value) {
+  if (!isObject(value)) throw new Error("RepositoryCandidate is malformed.");
+  for (const field of ["repositoryId","branch","baseRef","baseSha","candidateSha","sourceJobId","sourceAttemptId"]) requiredString(value[field], `RepositoryCandidate ${field}`);
+  if (!Array.isArray(value.changedFiles) || !value.changedFiles.every((file) => typeof file === "string" && file.trim())) throw new Error("RepositoryCandidate changedFiles are invalid.");
+  if (typeof value.published !== "boolean") throw new Error("RepositoryCandidate published must be boolean.");
+  if (value.remoteRef !== undefined && typeof value.remoteRef !== "string") throw new Error("RepositoryCandidate remoteRef is invalid.");
+  return Object.freeze({ ...value, changedFiles: Object.freeze([...value.changedFiles]) });
+}
+
+export function parseHumanInputRequest(value) {
+  if (!isObject(value) || value.version !== HUMAN_INPUT_REQUEST_VERSION) throw new Error("HumanInputRequest V1 is malformed.");
+  requiredString(value.requestId, "Human input requestId"); requiredString(value.jobId, "Human input jobId"); requiredString(value.attemptId, "Human input attemptId");
+  if (!Array.isArray(value.questions) || !value.questions.length || value.questions.length > 10) throw new Error("Human input questions must contain 1-10 questions.");
+  const ids = new Set();
+  const questions = value.questions.map((question) => {
+    if (!isObject(question) || !["text","yes_no","single_choice"].includes(question.type)) throw new Error("Human question type is invalid.");
+    requiredString(question.id, "Human question id"); requiredString(question.prompt, "Human question prompt");
+    if (ids.has(question.id)) throw new Error(`Human question ID ${question.id} is duplicated.`); ids.add(question.id);
+    const options = question.options === undefined ? [] : question.options;
+    if (!Array.isArray(options) || !options.every((option) => typeof option === "string" && option.trim())) throw new Error(`Human question ${question.id} options are invalid.`);
+    if (question.type === "single_choice" && options.length < 2) throw new Error(`Human question ${question.id} requires choices.`);
+    return Object.freeze({ id: question.id, type: question.type, prompt: question.prompt, options: Object.freeze([...options]) });
+  });
+  return Object.freeze({ version: 1, requestId: value.requestId, jobId: value.jobId, attemptId: value.attemptId, createdAt: requiredString(value.createdAt, "Human input createdAt"), questions: Object.freeze(questions) });
 }
 
 export function serializeJobResult(value) {

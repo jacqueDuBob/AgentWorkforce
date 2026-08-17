@@ -51,6 +51,17 @@ test("clean review requires staged changes before commit and push", async () => 
   );
 });
 
+test("review publication reuses a commit already created for the logical job", async () => {
+  const { capability, calls } = fakeGit({
+    "branch --show-current": "flowboard/ticket-1\n",
+    "log -n 50 --format=%H%x00%B%x00": "abc123\0Implement feature\n\nFlowboard-Job: run-1\0",
+  });
+  const result = await capability.commitAndPushReview(job({ id: "run-1", type: "review" }), "/repo");
+  assert.deepEqual(result, { commitSha: "abc123", reused: true });
+  assert.equal(calls.some((call) => call.includes("commit")), false);
+  assert.deepEqual(calls.at(-1), ["git", "push", "--set-upstream", "origin", "HEAD"]);
+});
+
 test("persisted Git policy does not depend on a legacy column label", async () => {
   const { capability, calls } = fakeGit({ "branch --show-current": "main\n" });
   await capability.prepare({

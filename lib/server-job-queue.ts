@@ -99,6 +99,7 @@ async function persistJob(parameters: {
   userId: string; ticket: Record<string, unknown>; agent: Record<string, unknown>;
   repository: Record<string, unknown> | null; prompt: string; type: JobType; subtype?: string;
   trigger: Trigger; runKind: string; queueClass: "background" | "interactive"; input?: unknown;
+  idempotencyKey?: string;
 }) {
   const admin = getSupabaseAdmin();
   const id = randomUUID();
@@ -115,6 +116,7 @@ async function persistJob(parameters: {
     agent_name: parameters.agent.name, model_name: parameters.agent.model_name,
     rendered_prompt: parameters.prompt, trigger_type: parameters.trigger, status: "queued",
     run_kind: parameters.runKind, queue_class: parameters.queueClass, run_input: parameters.input ?? {},
+    queue_dedup_key: parameters.idempotencyKey ?? null,
   };
   let { data, error } = await admin.from("agent_runs").insert({
     ...compatibilityRow,
@@ -123,9 +125,16 @@ async function persistJob(parameters: {
   // App-first rolling upgrades can queue legacy-compatible rows until migration
   // 020 is applied. After the columns exist, every new row takes the persisted path.
   if (error && ["42703", "PGRST204"].includes(error.code ?? "")) {
+    delete (compatibilityRow as { queue_dedup_key?: string | null }).queue_dedup_key;
     const fallback = await admin.from("agent_runs").insert(compatibilityRow).select("id").single();
     data = fallback.data;
     error = fallback.error;
+  }
+  if (error?.code === "23505" && parameters.idempotencyKey) {
+    const existing = await admin.from("agent_runs").select("id").eq("user_id", parameters.userId)
+      .eq("queue_dedup_key", parameters.idempotencyKey).single();
+    if (existing.error) throw existing.error;
+    return existing.data.id as string;
   }
   if (error) throw error;
   if (!data) throw new Error("The agent run could not be queued.");
@@ -184,12 +193,6 @@ export async function queueEpicBreakoutJob(userId: string, epicId: string, domai
 }
 
 export async function queueDeploymentJob(userId: string, ticketId: string, idempotencyKey?: string) {
-  if (idempotencyKey) {
-    const { data: existing, error } = await getSupabaseAdmin().from("agent_runs").select("id")
-      .eq("user_id", userId).eq("run_kind", "column").contains("run_input", { trigger: "post_push", idempotencyKey }).maybeSingle();
-    if (error) throw error;
-    if (existing) return existing.id as string;
-  }
   const { ticket } = await loadOwnedTicket(userId, ticketId);
   const agent = await loadAgent("In Deployment");
   if (agent.start_mode !== "automatic") return null;
@@ -200,6 +203,26 @@ export async function queueDeploymentJob(userId: string, ticketId: string, idemp
   });
   return persistJob({
     userId, ticket: { ...ticket, status: "In Deployment" }, agent, repository, prompt, type: "deployment",
-    trigger: "automatic", runKind: "column", queueClass: "background", input: { trigger: "post_push", idempotencyKey: idempotencyKey ?? null },
+    trigger: "automatic", runKind: "column", queueClass: "background", idempotencyKey,
+    input: { trigger: "post_push", idempotencyKey: idempotencyKey ?? null },
   });
+}
+
+export async function dispatchRunnerOutbox(limit = 20) {
+  const admin = getSupabaseAdmin();
+  const { data: events, error } = await admin.from("agent_run_outbox").select("id,run_id,event_type,payload")
+    .is("processed_at", null).order("created_at", { ascending: true }).limit(limit);
+  // Migration 021 may lag the application during a rolling deployment.
+  if (error && ["42P01", "PGRST205"].includes(error.code ?? "")) return;
+  if (error) throw error;
+  for (const event of events ?? []) {
+    if (event.event_type !== "queue_deployment") continue;
+    try {
+      await queueDeploymentJob(String(event.payload.userId), String(event.payload.ticketId), `review:${event.run_id}`);
+      await admin.from("agent_run_outbox").update({ processed_at: new Date().toISOString(), last_error: null })
+        .eq("id", event.id).is("processed_at", null);
+    } catch (cause) {
+      await admin.from("agent_run_outbox").update({ last_error: cause instanceof Error ? cause.message : "Dispatch failed." }).eq("id", event.id);
+    }
+  }
 }

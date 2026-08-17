@@ -12,7 +12,10 @@ export interface JobSpecV1 {
   execution: { git: { mode: GitMode }; verificationPlan: VerificationPlanV1 };
   input?: unknown;
 }
-export interface JobResultV1 { version: 1; jobId: string; jobType: JobType; outcome: "succeeded" | "failed"; checks: Array<Record<string, unknown>>; [key: string]: unknown; }
+export interface HumanQuestion { id: string; type: "text" | "yes_no" | "single_choice"; prompt: string; options: readonly string[]; }
+export interface HumanInputRequestV1 { version: 1; requestId: string; jobId: string; attemptId: string; createdAt: string; questions: readonly HumanQuestion[]; }
+export interface RepositoryCandidate { id?: string; version?: number; repositoryId: string; branch: string; baseRef: string; baseSha: string; candidateSha: string; changedFiles: readonly string[]; published: boolean; remoteRef?: string; sourceJobId: string; sourceAttemptId: string; predecessorCandidateId?: string | null; }
+export interface JobResultV1 { version: 1; jobId: string; jobType: JobType; outcome: "succeeded" | "failed" | "needs_input"; inputRequest?: HumanInputRequestV1; checks: Array<Record<string, unknown>>; [key: string]: unknown; }
 export const JOB_SPEC_VERSION: 1;
 export const JOB_RESULT_VERSION: 1;
 export const JOB_TYPES: readonly JobType[];
@@ -26,4 +29,6 @@ export function parseJobSpec(value: unknown): JobSpecV1;
 export function serializeJobSpec(value: unknown): JobSpecV1;
 export function buildJobSpecV1(value: unknown): JobSpecV1;
 export function parseJobResult(value: unknown): JobResultV1;
+export function parseHumanInputRequest(value: unknown): HumanInputRequestV1;
+export function parseRepositoryCandidate(value: unknown): RepositoryCandidate;
 export function serializeJobResult(value: unknown): JobResultV1;

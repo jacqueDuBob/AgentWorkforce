@@ -18,26 +18,35 @@ export class Runner {
     let verificationWorkspace;
     try {
       workspace = await this.workspaceProvider.provision(job);
-      await this.git.prepare(job, workspace.workingDirectory);
+      await this.git.prepare(job, workspace.workingDirectory, workspace);
       const verificationPlan = job.persisted
         ? job.execution.verificationPlan
         : await this.verificationPlans.forJob(job, workspace.workingDirectory);
       const invocation = await this.agent.invoke(job, workspace);
+      if (invocation.structured) {
+        const preview = JSON.parse(invocation.finalResponse);
+        if (job.type === "development" && Array.isArray(preview?.questions) && preview.questions.some((question) => typeof question === "string" && question.trim())) {
+          const repository = this.git.describe ? await this.git.describe(workspace.workingDirectory) : undefined;
+          const result = parseAgentResult(job, invocation, { checks: [], repository });
+          await this.jobSource.complete(job.id, { ...toLegacyFinishPayload(result), attemptId: job.attempt?.id, completionId: randomUUID() });
+          return result;
+        }
+      }
       let checks = [];
       if (verificationPlan.checks.length) {
         verificationWorkspace = await this.verificationWorkspaces.provision(workspace.workingDirectory, verificationPlan);
         checks = await this.verification.execute(verificationPlan, verificationWorkspace.workingDirectory);
       }
       const repository = this.git.describe ? await this.git.describe(workspace.workingDirectory) : undefined;
-      let gitPushSucceeded = false;
-      if (job.type === "review" && invocation.structured && checks.every((check) => check.succeeded)) {
-        const preview = JSON.parse(invocation.finalResponse);
-        if (Array.isArray(preview.findings) && preview.findings.length === 0) {
-          await this.git.commitAndPushReview(job, workspace.workingDirectory);
-          gitPushSucceeded = true;
-        }
+      if (repository && !repository.branch && workspace.branch) repository.branch = workspace.branch;
+      let candidate = job.repositoryCandidate ?? undefined;
+      let gitPushSucceeded = Boolean(candidate?.published);
+      if (job.type === "development" && checks.every((check) => check.succeeded)) {
+        candidate = await this.git.publishDevelopmentCandidate(job, workspace);
+        candidate = await this.jobSource.publishCandidate(job.id, job.attempt.id, candidate);
+        gitPushSucceeded = candidate.published;
       }
-      const result = parseAgentResult(job, invocation, { gitPushSucceeded, checks, repository });
+      const result = parseAgentResult(job, invocation, { gitPushSucceeded, checks, repository, candidate });
       if (result.outcome === "failed") throw new VerificationFailedError(result);
       await this.jobSource.complete(job.id, { ...toLegacyFinishPayload(result), attemptId: job.attempt?.id, completionId: randomUUID() });
       return result;
