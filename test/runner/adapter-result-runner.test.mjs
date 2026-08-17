@@ -37,10 +37,29 @@ test("JobResult parsing preserves the existing structured finish payload", () =>
     provider: "codex", threadId: "thread-1", structured: true,
     finalResponse: JSON.stringify({ findings: [], summary: "Clean" }),
   }, { gitPushSucceeded: true });
-  assert.deepEqual(toLegacyFinishPayload(result), {
+  const payload = toLegacyFinishPayload(result);
+  assert.deepEqual({ result: payload.result, threadId: payload.threadId, gitPushSucceeded: payload.gitPushSucceeded }, {
     result: { findings: [], summary: "Clean", gitPushSucceeded: true },
     threadId: "thread-1", gitPushSucceeded: true,
   });
+  assert.equal(payload.resultVersion, 1);
+  assert.equal(payload.canonicalResult, result);
+  assert.deepEqual(result.checks, []);
+});
+
+test("canonical checks do not alter the legacy finish payload", () => {
+  const job = spec();
+  const checks = [{ id: "lint", command: ["npm", "run", "lint"], exitCode: 0, succeeded: true, durationMs: 10, stdout: "", stderr: "", timedOut: false }];
+  const result = parseAgentResult(job, {
+    provider: "codex", threadId: "thread-1", structured: true,
+    finalResponse: JSON.stringify({ summary: "Done", questions: [], proposals: [] }),
+  }, { checks });
+  assert.deepEqual(result.checks, checks);
+  const payload = toLegacyFinishPayload(result);
+  assert.deepEqual({ result: payload.result, threadId: payload.threadId, gitPushSucceeded: payload.gitPushSucceeded }, {
+    result: { summary: "Done", questions: [], proposals: [] }, threadId: "thread-1", gitPushSucceeded: false,
+  });
+  assert.deepEqual(payload.canonicalResult.checks, checks);
 });
 
 test("JobResult parsing rejects malformed structured output", () => {
@@ -78,4 +97,59 @@ test("Runner disposes workspace after execution failure", async () => {
   });
   await assert.rejects(runner.execute(spec()), /failed/);
   assert.equal(disposed, 1);
+});
+
+test("Runner cleans verification and repository workspaces after check failure", async () => {
+  const disposed = [];
+  const runner = new Runner({
+    jobSource: { complete: async () => {} },
+    workspaceProvider: { provision: async () => ({ workingDirectory: "/repo" }), dispose: async () => disposed.push("repository") },
+    gitCapability: { prepare: async () => {} },
+    agentAdapter: { invoke: async () => ({ provider: "codex", threadId: "thread", structured: true, finalResponse: JSON.stringify({ summary: "Done", questions: [], proposals: [] }) }) },
+    verificationPlanProvider: { forJob: async () => ({ checks: [{ id: "test" }] }) },
+    verificationWorkspaceProvider: { provision: async () => ({ workingDirectory: "/verification" }), dispose: async () => disposed.push("verification") },
+    verificationExecutor: { execute: async () => [{ id: "test", command: ["npm", "test"], exitCode: 1, succeeded: false, durationMs: 1, stdout: "", stderr: "failed", timedOut: false }] },
+  });
+  await assert.rejects(runner.execute(spec()), (error) => {
+    assert.equal(error.name, "VerificationFailedError");
+    assert.equal(error.jobResult.outcome, "failed");
+    return true;
+  });
+  assert.deepEqual(disposed, ["verification", "repository"]);
+});
+
+test("Runner releases the repository even when verification cleanup fails", async () => {
+  let repositoryDisposed = false;
+  const runner = new Runner({
+    jobSource: { complete: async () => {} },
+    workspaceProvider: { provision: async () => ({ workingDirectory: "/repo" }), dispose: async () => { repositoryDisposed = true; } },
+    gitCapability: { prepare: async () => {} },
+    agentAdapter: { invoke: async () => ({ provider: "codex", threadId: "thread", structured: true, finalResponse: JSON.stringify({ summary: "Done", questions: [], proposals: [] }) }) },
+    verificationPlanProvider: { forJob: async () => ({ checks: [{ id: "test" }] }) },
+    verificationWorkspaceProvider: { provision: async () => ({ workingDirectory: "/verification" }), dispose: async () => { throw new Error("cleanup failed"); } },
+    verificationExecutor: { execute: async () => [{ id: "test", succeeded: true }] },
+  });
+  await assert.rejects(runner.execute(spec()), /cleanup failed/);
+  assert.equal(repositoryDisposed, true);
+});
+
+test("Runner executes the persisted verification snapshot instead of mutable discovery", async () => {
+  let discovered = false;
+  let executedPlan;
+  const persistedJob = {
+    ...spec(), persisted: true,
+    execution: { git: { mode: "prepare_ticket_branch" }, verificationPlan: { version: 1, checks: [{ id: "persisted" }], trustedPackageScripts: {} } },
+  };
+  const runner = new Runner({
+    jobSource: { complete: async () => {} },
+    workspaceProvider: { provision: async () => ({ workingDirectory: "/repo" }), dispose: async () => {} },
+    gitCapability: { prepare: async () => {}, describe: async () => ({ branch: "branch", changedFiles: [] }) },
+    agentAdapter: { invoke: async () => ({ provider: "codex", threadId: "thread", structured: true, finalResponse: JSON.stringify({ summary: "Done", questions: [], proposals: [] }) }) },
+    verificationPlanProvider: { forJob: async () => { discovered = true; return { checks: [] }; } },
+    verificationWorkspaceProvider: { provision: async () => ({ workingDirectory: "/verification" }), dispose: async () => {} },
+    verificationExecutor: { execute: async (plan) => { executedPlan = plan; return [{ id: "persisted", command: ["npm", "test"], exitCode: 0, succeeded: true, durationMs: 1, stdout: "", stderr: "", timedOut: false }]; } },
+  });
+  await runner.execute(persistedJob);
+  assert.equal(discovered, false);
+  assert.equal(executedPlan.checks[0].id, "persisted");
 });

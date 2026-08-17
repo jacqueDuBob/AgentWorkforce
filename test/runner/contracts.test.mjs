@@ -34,9 +34,9 @@ test("central permission profiles are explicit and immutable", () => {
   assert.equal(Object.isFrozen(permissionProfileFor("review")), true);
 });
 
-test("Codex sandbox translation preserves current review compatibility", () => {
+test("Codex sandbox gives review true read-only access", () => {
   const review = legacyRunToJobSpec(legacyJob({ column: "In Review" }));
   const refinement = legacyRunToJobSpec(legacyJob({ kind: "refinement_questions", column: "In Refinement" }));
-  assert.equal(codexSandboxMode(review), "workspace-write");
+  assert.equal(codexSandboxMode(review), "read-only");
   assert.equal(codexSandboxMode(refinement), "read-only");
 });

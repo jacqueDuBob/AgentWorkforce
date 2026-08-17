@@ -29,6 +29,8 @@ export interface AgentRun {
   trigger: StartMode;
   status: AgentRunStatus;
   output?: Record<string, unknown>;
+  canonicalResult?: Record<string, unknown>;
+  resultVersion?: number;
   error: string;
   createdAt: string;
   updatedAt: string;

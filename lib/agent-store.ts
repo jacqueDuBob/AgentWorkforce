@@ -47,12 +47,17 @@ export async function saveColumnAgent(agent: ColumnAgent) {
   }
 }
 
-export async function queueAgentRun(ticketId: string, agent: ColumnAgent, trigger: "manual" | "automatic", renderedPrompt: string, output?: Record<string, unknown>) {
+export async function queueAgentRun(ticketId: string, trigger: "manual" | "automatic") {
   if (!supabase) throw new Error("Supabase is required to run agents.");
-  await ensureSupabaseSession();
-  const { data, error } = await supabase.from("agent_runs").insert({ ticket_id: ticketId, column_name: agent.column, agent_name: agent.name, model_name: agent.modelName, rendered_prompt: renderedPrompt, trigger_type: trigger, status: "queued", output }).select("id").single();
-  if (error) throw error;
-  return data.id as string;
+  const session = await ensureSupabaseSession();
+  const response = await fetch("/api/agent-runs", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ticketId, trigger }),
+  });
+  const data = await response.json() as { runId?: string; error?: string };
+  if (!response.ok || !data.runId) throw new Error(data.error || "The agent run could not be queued.");
+  return data.runId;
 }
 
 export async function updateAgentRunStatus(id: string, status: AgentRunStatus, details?: { output?: Record<string, unknown>; error?: string }) {
@@ -87,6 +92,7 @@ export async function loadAgentRuns(): Promise<AgentRun[]> {
     id: row.id, ticketId: row.ticket_id, column: row.column_name, agentName: row.agent_name,
     modelName: row.model_name ?? "", renderedPrompt: row.rendered_prompt ?? "", trigger: row.trigger_type, status: row.status,
     output: row.output ?? undefined, error: row.error ?? "", createdAt: row.created_at, updatedAt: row.updated_at,
+    canonicalResult: row.canonical_result ?? undefined, resultVersion: row.result_version ?? undefined,
     startedAt: row.started_at ?? undefined, finishedAt: row.finished_at ?? undefined,
   }));
 }
@@ -100,6 +106,7 @@ export async function loadAgentRun(id: string): Promise<AgentRun | undefined> {
     id: row.id, ticketId: row.ticket_id, column: row.column_name, agentName: row.agent_name,
     modelName: row.model_name ?? "", renderedPrompt: row.rendered_prompt ?? "", trigger: row.trigger_type, status: row.status,
     output: row.output ?? undefined, error: row.error ?? "", createdAt: row.created_at, updatedAt: row.updated_at,
+    canonicalResult: row.canonical_result ?? undefined, resultVersion: row.result_version ?? undefined,
     startedAt: row.started_at ?? undefined, finishedAt: row.finished_at ?? undefined,
   } : undefined;
 }

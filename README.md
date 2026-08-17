@@ -24,9 +24,12 @@ The app requires a Supabase project for authentication and board storage:
 11. Run `supabase/migrations/011_codex_refinement_runs.sql` to add prioritized, repository-aware Codex refinement jobs.
 12. Run migrations `012_codex_epic_breakout_runs.sql` through `017_ticket_conversations_notifications.sql` in numerical order.
 13. If migration 014 was previously applied before migration 013, run `018_repair_deployment_and_worker_git.sql` instead of replaying migration 013 against the newer schema.
-14. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
-15. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
-16. Restart the development server and create your first account.
+14. Run `019_ticket_collaboration_hardening.sql`, then `020_persisted_job_contracts.sql` to centralize versioned job creation and canonical results.
+15. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
+16. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+17. Restart the development server and create your first account.
+
+For an existing deployment, deploy the application code before applying migration 020. The server temporarily falls back to legacy-compatible queue rows when the new columns are absent; once migration 020 is applied, new rows automatically use immutable JobSpecs and browser-side run mutation is disabled.
 
 ## Deploy to Vercel
 
@@ -56,4 +59,12 @@ FLOWBOARD_REPOSITORIES='{"jacqueDuBob/AgentWorkforce":"/Users/jakobdrees/AgentWo
 
 6. Run the copied command from this project directory. Leave the process running while agents should execute.
 
-The worker disables network access and interactive approval prompts. Repository-aware refinement and Epic breakout runs use a read-only sandbox; other column runs use `workspace-write`. Its token is displayed once; create a new token if it is lost.
+The worker disables network access and interactive approval prompts. Repository-aware refinement, Epic breakout, and review runs use a read-only sandbox; development and other existing column runs retain `workspace-write`. Its token is displayed once; create a new token if it is lost.
+
+Development, review, and testing jobs run deterministic verification through the Runner. New jobs snapshot their exact server-owned verification plan when queued. Historical jobs without a persisted JobSpec retain legacy discovery of `lint`, `typecheck`/`type-check`, `test`, and `build` from committed `HEAD:package.json`. Checks run in a temporary source snapshot so generated files do not mutate the checkout. Review agents receive read-only repository access; deterministic review checks and Git operations remain Runner-owned.
+
+Set the same application-owned `FLOWBOARD_VERIFICATION_PLANS` JSON map on the Flowboard server and local worker. The server snapshots matching definitions into new JobSpecs; the worker uses its copy only for legacy rows. Commands use executable and argument arrays and never a shell string or agent output. Example:
+
+```json
+{"owner/repository":{"checks":[{"id":"unit","executable":"cargo","args":["test"],"timeoutMs":600000,"jobTypes":["development","review","testing"]}]}}
+```

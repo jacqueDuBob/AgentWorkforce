@@ -50,3 +50,12 @@ test("clean review requires staged changes before commit and push", async () => 
     /no changes to commit/,
   );
 });
+
+test("persisted Git policy does not depend on a legacy column label", async () => {
+  const { capability, calls } = fakeGit({ "branch --show-current": "main\n" });
+  await capability.prepare({
+    persisted: true, type: "development", execution: { git: { mode: "prepare_ticket_branch" } },
+    ticket: { id: "ticket-2", title: "Work", findings: "", baseBranch: "main" }, repository: { defaultBranch: "main" },
+  }, "/repo");
+  assert.deepEqual(calls.at(-1), ["git", "switch", "-c", "flowboard/ticket-2"]);
+});

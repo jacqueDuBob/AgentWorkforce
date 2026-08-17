@@ -10,15 +10,12 @@ const profiles = Object.freeze({
 });
 
 export function permissionProfileFor(jobType) {
-  return jobType === "refinement" || jobType === "epic_breakout" || jobType === "review"
-    ? profiles.repository_read
-    : profiles.repository_write;
+  return permissionProfileForJobType(jobType) === "repository_read" ? profiles.repository_read : profiles.repository_write;
 }
 
-// Review historically ran Codex in workspace-write so it could execute verification
-// commands that create build output. Keep that compatibility until checks are runner-owned.
 export function codexSandboxMode(job) {
-  return job.type === "review" ? "workspace-write" : job.permissions.repositoryAccess;
+  return job.permissions.repositoryAccess;
 }
 
 export { profiles as permissionProfiles };
+import { permissionProfileForJobType } from "../../shared/job-contract.mjs";

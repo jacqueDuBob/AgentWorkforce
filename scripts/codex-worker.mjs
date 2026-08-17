@@ -1,4 +1,5 @@
 import { runWorker } from "./runner-worker.mjs";
+import { parseVerificationConfiguration } from "./runner/verification-plan.mjs";
 
 const appUrl = (process.env.FLOWBOARD_URL || "").replace(/\/$/, "");
 const workerToken = process.env.FLOWBOARD_WORKER_TOKEN || "";
@@ -13,4 +14,6 @@ let repositories;
 try { repositories = JSON.parse(process.env.FLOWBOARD_REPOSITORIES || "{}"); }
 catch { throw new Error("FLOWBOARD_REPOSITORIES must map owner/name to a local path."); }
 
-await runWorker({ appUrl, workerToken, pollInterval, repositories });
+const verificationPlans = parseVerificationConfiguration(process.env.FLOWBOARD_VERIFICATION_PLANS || "");
+
+await runWorker({ appUrl, workerToken, pollInterval, repositories, verificationPlans });

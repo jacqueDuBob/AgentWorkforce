@@ -1,5 +1,6 @@
 import { mapLegacyJobSubtype, mapLegacyJobType } from "./job-types.mjs";
 import { permissionProfileFor } from "./permissions.mjs";
+import { parseJobResult } from "../../shared/job-contract.mjs";
 
 export function legacyRunToJobSpec(legacyJob) {
   if (!legacyJob || typeof legacyJob !== "object") throw new Error("The claimed job is invalid.");
@@ -22,19 +23,34 @@ export function legacyRunToJobSpec(legacyJob) {
       model: legacyJob.run.modelName || undefined,
     }),
     permissions: permissionProfileFor(type),
+    persisted: false,
     legacy: legacyJob,
   });
 }
 
 export function createJobResult(job, values) {
-  return Object.freeze({
+  const checks = Object.freeze([...(values.checks ?? [])]);
+  return parseJobResult({
     version: 1,
     jobId: job.id,
     jobType: job.type,
-    outcome: "succeeded",
+    outcome: values.outcome ?? (checks.every((check) => check.succeeded) ? "succeeded" : "failed"),
     agent: values.agent,
     result: values.result,
     finalResponse: values.finalResponse,
-    git: Object.freeze({ pushSucceeded: Boolean(values.gitPushSucceeded) }),
+    git: Object.freeze({
+      pushSucceeded: Boolean(values.gitPushSucceeded),
+      branch: values.repository?.branch ?? "",
+      changedFiles: Object.freeze([...(values.repository?.changedFiles ?? [])]),
+    }),
+    checks,
+    error: values.error,
+  });
+}
+
+export function createFailedJobResult(job, cause) {
+  return createJobResult(job, {
+    outcome: "failed", agent: { provider: job.agent.provider }, checks: [], gitPushSucceeded: false,
+    error: { code: cause?.name || "ExecutionError", message: cause instanceof Error ? cause.message : "Runner execution failed." },
   });
 }
