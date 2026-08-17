@@ -5,7 +5,7 @@ import { getSupabaseAdmin } from "./supabase-admin";
 export async function loadRefinementPromptContext(userId: string) {
   const admin = getSupabaseAdmin();
   const [{ data: agent, error: agentError }, { data: settings }, { data: repositories, error: repositoriesError }] = await Promise.all([
-    admin.from("column_agents").select("*").eq("column_name", "In Refinement").single(),
+    admin.from("column_agents").select("*").eq("column_name", "Refinement").single(),
     admin.from("workspace_settings").select("master_instructions").eq("user_id", userId).maybeSingle(),
     admin.from("github_repositories").select("id,owner,name,default_branch").eq("user_id", userId).order("owner").order("name"),
   ]);

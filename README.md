@@ -25,9 +25,10 @@ The app requires a Supabase project for authentication and board storage:
 12. Run migrations `012_codex_epic_breakout_runs.sql` through `017_ticket_conversations_notifications.sql` in numerical order.
 13. If migration 014 was previously applied before migration 013, run `018_repair_deployment_and_worker_git.sql` instead of replaying migration 013 against the newer schema.
 14. Run `019_ticket_collaboration_hardening.sql` through `024_repository_candidate_handoff.sql` in numerical order to add versioned jobs, leased attempts, suspended human-input rounds, and durable Git-native repository candidates.
-15. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
-16. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
-17. Restart the development server and create your first account.
+15. Run `025_eight_column_consolidation.sql` to consolidate the board into the eight canonical columns (Inbox, Refinement, Ready, In Progress, Review, Validation, Ready to Deploy, Live), migrating existing tickets and column agents in place; use `validate_migration_025.sql` to check the result.
+16. Copy `.env.example` to `.env.local` and add the project URL, publishable/anon key, and server-only service-role key.
+17. In Authentication → URL Configuration, set the Site URL to your local or deployed URL and add any required redirect URLs.
+18. Restart the development server and create your first account.
 
 For an existing deployment, deploy the application code before applying migration 020. The server temporarily falls back to legacy-compatible queue rows when the new columns are absent; once migration 020 is applied, new rows automatically use immutable JobSpecs and browser-side run mutation is disabled. Apply migrations 021 and 022 together with the capability-advertising worker: workers from before Phase 2C are intentionally ineligible for leased jobs and receive an upgrade-required response instead of claiming work they cannot finish.
 
@@ -39,15 +40,17 @@ Flowboard supports email/password sign-up, sign-in, password reset, persistent s
 
 ## Column agents
 
-Add repositories once through **GitHub repositories** in the header menu, then select the target repository and base branch on each ticket. **Column Setup** controls prompts and whether an agent may use every connected repository or only a selected subset. Manual and automatic runs render the selected column prompt with ticket context and store the complete snapshot on `agent_runs` before queuing.
+The board has eight columns: **Inbox**, **Refinement**, **Ready**, **In Progress**, **Review**, **Validation**, **Ready to Deploy**, and **Live**. Add repositories once through **GitHub repositories** in the header menu, then select the target repository and base branch on each ticket. **Column Setup** controls every column's agent name, model, instructions, enabled state, manual/automatic start mode, and repository-access policy; **Refinement** additionally exposes its specialized questions, rewrite, and Epic breakout prompts. Manual and automatic runs render the selected column prompt with ticket context and store the complete snapshot on `agent_runs` before queuing.
 
-The local worker creates a non-base ticket branch before the **In Work** agent implements changes and leaves them uncommitted. The **In Review** agent records actionable issues in the ticket's Findings field without committing. When review is clean, the worker commits and pushes the current branch; only that successful review push can queue automatic deployment. Move a ticket with findings back to **In Work** to run the implementation agent with those findings included in its prompt.
+The local worker creates a non-base ticket branch before the **In Progress** agent implements changes and leaves them uncommitted. The **Review** agent records actionable issues in the ticket's Findings field without committing. A clean review is required to have a published repository candidate; the worker then commits and pushes the current branch, and only that successful push can queue automatic deployment. A review with findings never queues deployment: the ticket automatically returns to **In Progress** with its findings retained, and a new development attempt is queued only if the In Progress agent's start mode is automatic (otherwise it waits for a manual run), without creating duplicate jobs on retries.
+
+Runner job types are unchanged and map from the eight columns as follows: **In Progress** → `development`, **Review** → `review`, **Validation** → `testing`, **Ready to Deploy** → `deployment`; **Inbox**, **Ready**, and **Live** run the generic `column` job type with a configurable but not specialized agent.
 
 ## Local Codex worker
 
 The Vercel app queues work in Supabase. A worker on your computer polls the Vercel API and runs the Codex SDK in the matching local Git checkout; local Codex authentication never leaves your computer.
 
-1. Apply all migrations through `024_repository_candidate_handoff.sql` in Supabase.
+1. Apply all migrations through `025_eight_column_consolidation.sql` in Supabase.
 2. Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel and redeploy.
 3. In Flowboard, open the workspace menu and choose **Local Codex worker**.
 4. Create a worker token and copy the generated startup command.

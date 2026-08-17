@@ -8,6 +8,9 @@ export const JOB_TYPES = Object.freeze({
   COLUMN: "column",
 });
 
+// Historical-only: maps immutable pre-JobSpec run snapshots, which permanently carry
+// the retired 13-column names, to a canonical job type. Never update this to the
+// eight-column names; live columns use jobTypeForColumn in shared/job-contract.mjs.
 export function mapLegacyJobType(run) {
   const kind = run?.kind || "column";
   if (kind === "refinement_questions" || kind === "refinement_rewrite") return JOB_TYPES.REFINEMENT;

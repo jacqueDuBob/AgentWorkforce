@@ -22,10 +22,10 @@ const deepFreeze = (value) => {
 };
 
 export function jobTypeForColumn(column) {
-  if (column === "In Work") return "development";
-  if (column === "In Review") return "review";
-  if (column === "In Testing") return "testing";
-  if (column === "In Deployment") return "deployment";
+  if (column === "In Progress") return "development";
+  if (column === "Review") return "review";
+  if (column === "Validation") return "testing";
+  if (column === "Ready to Deploy") return "deployment";
   return "column";
 }
 

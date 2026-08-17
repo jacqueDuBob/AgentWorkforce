@@ -85,7 +85,7 @@ function DeleteDialog({ ticket, onCancel, onConfirm }: { ticket?: Ticket; onCanc
 
 export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSignOut: () => void }) {
   const [tickets, setTickets] = useState<Ticket[]>([]); const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [instructionsOpen, setInstructionsOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("New"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]); const [masterInstructions, setMasterInstructions] = useState("");
+  const [query, setQuery] = useState(""); const [formOpen, setFormOpen] = useState(false); const [setupOpen, setSetupOpen] = useState(false); const [repositoriesOpen, setRepositoriesOpen] = useState(false); const [instructionsOpen, setInstructionsOpen] = useState(false); const [headerMenu, setHeaderMenu] = useState(false); const [editing, setEditing] = useState<Ticket>(); const [deleting, setDeleting] = useState<Ticket>(); const [refining, setRefining] = useState<Ticket>(); const [formStatus, setFormStatus] = useState<ColumnId>("Inbox"); const [active, setActive] = useState<Ticket>(); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [agents, setAgents] = useState<ColumnAgent[]>([]); const [repositories, setRepositories] = useState<GitHubRepository[]>([]); const [masterInstructions, setMasterInstructions] = useState("");
   const [role, setRole] = useState<UserRole>("user");
   const [queueOpen, setQueueOpen] = useState(false); const [workerOpen, setWorkerOpen] = useState(false);
   const [conversationTicket, setConversationTicket] = useState<Ticket>(); const [notifications, setNotifications] = useState<Notification[]>([]); const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -99,13 +99,13 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
   useEffect(() => { if (!headerMenu) return; const dismiss = (event: PointerEvent) => { if (!headerMenuRef.current?.contains(event.target as Node)) setHeaderMenu(false); }; document.addEventListener("pointerdown", dismiss); return () => document.removeEventListener("pointerdown", dismiss); }, [headerMenu]);
   const visible = useMemo(() => { const term = query.toLowerCase(); return tickets.filter((t) => !term || [t.title, t.description, t.findings, t.assignee, ...t.tags].some((value) => value.toLowerCase().includes(term))); }, [tickets, query]);
   const saveAll = async (next: Ticket[]) => { setTickets(next); try { await persistTickets(next); setError(""); } catch { setError("Your change could not be saved. Please try again."); } };
-  const openNew = (status: ColumnId = "New") => { setEditing(undefined); setFormStatus(status); setFormOpen(true); };
+  const openNew = (status: ColumnId = "Inbox") => { setEditing(undefined); setFormStatus(status); setFormOpen(true); };
   const save = (draft: TicketDraft) => { const now = new Date().toISOString(); const next = editing ? tickets.map((t) => t.id === editing.id ? { ...t, ...draft, updatedAt: now } : t) : [...tickets, { ...draft, id: crypto.randomUUID(), position: tickets.filter((t) => t.status === draft.status).length, createdAt: now, updatedAt: now, itemType: "Item" as const, parentEpicId: "", isDraft: false }]; setFormOpen(false); void saveAll(next); };
   const confirmDelete = async () => { if (!deleting) return; const ticket = deleting; const previous = tickets; const next = tickets.filter((item) => item.id !== ticket.id); setDeleting(undefined); setTickets(next); try { await removeTicket(ticket.id); } catch { setTickets(previous); setError("The item could not be deleted."); } };
-  const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (ticket.status === "In Refinement" && trigger === "manual") { setRefining(ticket); return; } const isAfterRefinement = COLUMNS.indexOf(ticket.status) > COLUMNS.indexOf("In Refinement"); if (isAfterRefinement && !ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (ticket.repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { await queueAgentRun(ticket.id, trigger); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch (cause) { setError(cause instanceof Error ? cause.message : "The agent could not be started. Run the latest database migration and try again."); } };
+  const runAgent = async (ticket: Ticket, trigger: "manual" | "automatic" = "manual") => { const agent = agents.find((item) => item.column === ticket.status); if (!agent?.enabled) return; if (ticket.status === "Refinement" && trigger === "manual") { setRefining(ticket); return; } const isAfterRefinement = COLUMNS.indexOf(ticket.status) > COLUMNS.indexOf("Refinement"); if (isAfterRefinement && !ticket.repositoryId) { setError("Select a GitHub repository on this work item before starting its agent."); return; } if (ticket.repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(ticket.repositoryId)) { setError(`${agent.name} is not allowed to use this ticket’s repository.`); return; } try { await queueAgentRun(ticket.id, trigger); setNotice(`${agent.name} queued for “${ticket.title}”.`); } catch (cause) { setError(cause instanceof Error ? cause.message : "The agent could not be started. Run the latest database migration and try again."); } };
   const submitRefinement = async (repositoryId: string, proposal: RefinementProposal, answers: RefinementAnswer[], rewrite: RefinedTicketContent) => {
     if (!refining) return;
-    const agent = agents.find((item) => item.column === "In Refinement");
+    const agent = agents.find((item) => item.column === "Refinement");
     if (!agent) throw new Error("The refinement agent is not configured.");
     if (repositoryId && agent.repositoryAccess === "selected" && !agent.allowedRepositoryIds.includes(repositoryId)) throw new Error(`${agent.name} is not allowed to use the selected repository.`);
     const { epicRecommendation, technicalDesign, ...ticketRewrite } = rewrite;
@@ -159,7 +159,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     }
     const moved = next.find((item) => item.id === ticket.id);
     const destinationAgent = agents.find((item) => item.column === destination);
-    if (moved && destination !== "In Deployment" && destinationAgent?.enabled && destinationAgent.startMode === "automatic" && destination !== ticket.status) await runAgent(moved, "automatic");
+    if (moved && destination !== "Ready to Deploy" && destinationAgent?.enabled && destinationAgent.startMode === "automatic" && destination !== ticket.status) await runAgent(moved, "automatic");
   };
   const updateAgent = async (agent: ColumnAgent) => { if (role !== "admin") throw new Error("Only administrators can configure column agents."); await saveColumnAgent(agent); setAgents((current) => current.map((item) => item.column === agent.column ? agent : item)); };
   const createRepository = async (repository: Omit<GitHubRepository, "id">) => { const created = await addRepository(repository); setRepositories((current) => [...current, created]); };
@@ -170,7 +170,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
     if (force) setNotice(`Starting refinement breakout for “${ticket.title}”…`);
     const repository = repositories.find((item) => item.id === ticket.repositoryId);
     const domain = repository ? `${repository.owner}/${repository.name}` : "workspace application";
-    const configuredAgent = agents.find((item) => item.column === "In Refinement") ?? agents.find((item) => item.enabled);
+    const configuredAgent = agents.find((item) => item.column === "Refinement") ?? agents.find((item) => item.enabled);
     const specializedAgent = { name: repository ? `${repository.name} Breakout Agent` : "Application Breakout Agent", modelName: configuredAgent?.modelName ?? "gpt-5.6-luna" };
     try {
       const started = force
@@ -186,7 +186,7 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       const created: Ticket[] = []; const failed: Array<{ title: string; error: string }> = [];
       for (const child of proposal.children) {
         const now = new Date().toISOString();
-        const draft: Ticket = { id: crypto.randomUUID(), title: child.title, description: child.description, findings: "", acceptanceCriteria: child.acceptanceCriteria.map((text) => ({ id: crypto.randomUUID(), text, completed: false })), priority: child.priority, tags: child.tags.slice(0, 3), assignee: "", repositoryId: epic.repositoryId, baseBranch: epic.baseBranch, status: "New", position: tickets.filter((item) => item.status === "New").length + created.length, createdAt: now, updatedAt: now, itemType: "Item", parentEpicId: epic.id, isDraft: true };
+        const draft: Ticket = { id: crypto.randomUUID(), title: child.title, description: child.description, findings: "", acceptanceCriteria: child.acceptanceCriteria.map((text) => ({ id: crypto.randomUUID(), text, completed: false })), priority: child.priority, tags: child.tags.slice(0, 3), assignee: "", repositoryId: epic.repositoryId, baseBranch: epic.baseBranch, status: "Inbox", position: tickets.filter((item) => item.status === "Inbox").length + created.length, createdAt: now, updatedAt: now, itemType: "Item", parentEpicId: epic.id, isDraft: true };
         try { await persistTicket(draft); created.push(draft); setTickets((current) => [...current, draft]); }
         catch (cause) { failed.push({ title: child.title, error: cause instanceof Error ? cause.message : "Could not save draft ticket." }); }
       }
@@ -244,9 +244,9 @@ export function KanbanBoard({ userEmail, onSignOut }: { userEmail: string; onSig
       onConfirm={() => void confirmAndRunBreakout()}
       onDismiss={() => void dismissRecommendation()}
     />}
-    {refining && agents.find((agent) => agent.column === "In Refinement") && <RefinementDialog
-      key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "In Refinement")!}
-      repositories={repositories.filter((repository) => { const agent = agents.find((item) => item.column === "In Refinement"); return !agent || agent.repositoryAccess === "all" || agent.allowedRepositoryIds.includes(repository.id); })}
+    {refining && agents.find((agent) => agent.column === "Refinement") && <RefinementDialog
+      key={refining.id} ticket={refining} agent={agents.find((agent) => agent.column === "Refinement")!}
+      repositories={repositories.filter((repository) => { const agent = agents.find((item) => item.column === "Refinement"); return !agent || agent.repositoryAccess === "all" || agent.allowedRepositoryIds.includes(repository.id); })}
       onClose={() => setRefining(undefined)} onSubmit={submitRefinement}/>}
   </main>;
 }

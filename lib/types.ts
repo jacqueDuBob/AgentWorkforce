@@ -1,9 +1,17 @@
 export const COLUMNS = [
-  "New", "In Refinement", "Ready", "In Work", "Work Completed", "In Review",
-  "Review Completed", "In Testing", "Testing Completed", "In Deployment", "Deployed", "Ready for Live", "Live",
+  "Inbox", "Refinement", "Ready", "In Progress", "Review", "Validation", "Ready to Deploy", "Live",
 ] as const;
 
 export type ColumnId = (typeof COLUMNS)[number];
+
+// Legacy statuses/column names retired by the eight-column consolidation. Historical
+// agent_runs.job_spec/canonical_result snapshots may still reference these; never
+// rewrite that historical data, only use this for reading/labeling old evidence.
+export const LEGACY_COLUMNS = [
+  "New", "In Refinement", "Ready", "In Work", "Work Completed", "In Review",
+  "Review Completed", "In Testing", "Testing Completed", "In Deployment", "Deployed", "Ready for Live", "Live",
+] as const;
+export type LegacyColumnId = (typeof LEGACY_COLUMNS)[number];
 export type Priority = "Low" | "Medium" | "High" | "Urgent";
 export type ItemType = "Item" | "Epic";
 

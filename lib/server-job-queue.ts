@@ -141,7 +141,7 @@ async function persistJob(parameters: {
   return data.id as string;
 }
 
-export async function queueColumnJob(userId: string, ticketId: string, trigger: Trigger) {
+export async function queueColumnJob(userId: string, ticketId: string, trigger: Trigger, idempotencyKey?: string) {
   const { ticket } = await loadOwnedTicket(userId, ticketId);
   const agent = await loadAgent(String(ticket.status));
   const repository = await loadAuthorizedRepository(userId, agent, ticket.repository_id);
@@ -151,15 +151,23 @@ export async function queueColumnJob(userId: string, ticketId: string, trigger: 
   });
   return persistJob({
     userId, ticket, agent, repository, prompt, type: jobTypeForColumn(String(ticket.status)),
-    trigger, runKind: "column", queueClass: "background", input: {},
+    trigger, runKind: "column", queueClass: "background", input: {}, idempotencyKey,
   });
+}
+
+// Automatically re-queues development only when the In Progress agent's configured
+// start mode is automatic; a manual agent waits for the existing manual run control.
+export async function requeueDevelopmentAfterFindings(userId: string, ticketId: string, sourceRunId: string) {
+  const agent = await loadAgent("In Progress");
+  if (agent.start_mode !== "automatic") return null;
+  return queueColumnJob(userId, ticketId, "automatic", `review-findings:${sourceRunId}`);
 }
 
 export async function queueRefinementJob(userId: string, request: {
   ticketId: string; repositoryId?: string; action: RefinementAction; answers?: unknown; proposal?: unknown;
 }) {
   const { ticket } = await loadOwnedTicket(userId, request.ticketId);
-  const agent = await loadAgent("In Refinement");
+  const agent = await loadAgent("Refinement");
   const repository = await loadAuthorizedRepository(userId, agent, request.repositoryId);
   if (!repository) throw new Error("Select a repository available to the refinement agent.");
   const rewriting = request.action === "rewrite";
@@ -169,7 +177,7 @@ export async function queueRefinementJob(userId: string, request: {
     refinementAnswers: request.answers, agentName: String(agent.name),
   });
   return persistJob({
-    userId, ticket: { ...ticket, status: "In Refinement" }, agent, repository, prompt, type: "refinement",
+    userId, ticket: { ...ticket, status: "Refinement" }, agent, repository, prompt, type: "refinement",
     subtype: request.action, trigger: "manual", runKind: rewriting ? "refinement_rewrite" : "refinement_questions",
     queueClass: "interactive", input: { repositoryId: request.repositoryId, proposal: request.proposal ?? null, answers: request.answers ?? null },
   });
@@ -178,7 +186,7 @@ export async function queueRefinementJob(userId: string, request: {
 export async function queueEpicBreakoutJob(userId: string, epicId: string, domain: string, requesterEmail: string) {
   const { ticket } = await loadOwnedTicket(userId, epicId);
   if (ticket.item_type !== "Epic") throw new Error("A confirmed Epic is required.");
-  const agent = await loadAgent("In Refinement");
+  const agent = await loadAgent("Refinement");
   const repository = await loadAuthorizedRepository(userId, agent, ticket.repository_id);
   if (!repository) throw new Error("The Epic must use a repository available to the refinement agent.");
   const prompt = renderPromptTemplate(String(agent.epic_breakout_prompt), {
@@ -186,7 +194,7 @@ export async function queueEpicBreakoutJob(userId: string, epicId: string, domai
     domain, requesterEmail, agentName: String(agent.name),
   });
   return persistJob({
-    userId, ticket: { ...ticket, status: "In Refinement" }, agent, repository, prompt, type: "epic_breakout",
+    userId, ticket: { ...ticket, status: "Refinement" }, agent, repository, prompt, type: "epic_breakout",
     trigger: "manual", runKind: "epic_breakout", queueClass: "interactive",
     input: { repositoryId: repository.id, domain },
   });
@@ -194,15 +202,15 @@ export async function queueEpicBreakoutJob(userId: string, epicId: string, domai
 
 export async function queueDeploymentJob(userId: string, ticketId: string, idempotencyKey?: string) {
   const { ticket } = await loadOwnedTicket(userId, ticketId);
-  const agent = await loadAgent("In Deployment");
+  const agent = await loadAgent("Ready to Deploy");
   if (agent.start_mode !== "automatic") return null;
   const repository = await loadAuthorizedRepository(userId, agent, ticket.repository_id);
   const prompt = renderPromptTemplate(String(agent.instructions), {
     ticket, repository, workspaceInstructions: await workspaceInstructions(userId),
-    runContext: { trigger: "post_push", queuedColumn: "In Deployment" },
+    runContext: { trigger: "post_push", queuedColumn: "Ready to Deploy" },
   });
   return persistJob({
-    userId, ticket: { ...ticket, status: "In Deployment" }, agent, repository, prompt, type: "deployment",
+    userId, ticket: { ...ticket, status: "Ready to Deploy" }, agent, repository, prompt, type: "deployment",
     trigger: "automatic", runKind: "column", queueClass: "background", idempotencyKey,
     input: { trigger: "post_push", idempotencyKey: idempotencyKey ?? null },
   });
@@ -216,9 +224,13 @@ export async function dispatchRunnerOutbox(limit = 20) {
   if (error && ["42P01", "PGRST205"].includes(error.code ?? "")) return;
   if (error) throw error;
   for (const event of events ?? []) {
-    if (event.event_type !== "queue_deployment") continue;
+    if (!["queue_deployment", "queue_development"].includes(event.event_type)) continue;
     try {
-      await queueDeploymentJob(String(event.payload.userId), String(event.payload.ticketId), `review:${event.run_id}`);
+      if (event.event_type === "queue_deployment") {
+        await queueDeploymentJob(String(event.payload.userId), String(event.payload.ticketId), `review:${event.run_id}`);
+      } else {
+        await requeueDevelopmentAfterFindings(String(event.payload.userId), String(event.payload.ticketId), String(event.run_id));
+      }
       await admin.from("agent_run_outbox").update({ processed_at: new Date().toISOString(), last_error: null })
         .eq("id", event.id).is("processed_at", null);
     } catch (cause) {
